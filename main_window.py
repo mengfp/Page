@@ -38,6 +38,8 @@ class MainWindow(QMainWindow):
         self._build_status_bar()
         # Same Store as App — list panel must not stay _store=None until File>New
         self._list_panel.set_store(self._app.store)
+        self._list_panel.clear_selection()
+        self._editor_panel.reset_to_new_draft()
         self._update_title()
 
     # ------------------------------------------------------------------
@@ -103,6 +105,7 @@ class MainWindow(QMainWindow):
         self._editor_panel = EntryEditorPanel()
         splitter.addWidget(self._editor_panel)
         self._editor_panel.entry_changed.connect(self._on_entry_changed)
+        self._editor_panel.pending_entry_discarded.connect(self._on_pending_entry_discarded)
 
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
@@ -123,7 +126,8 @@ class MainWindow(QMainWindow):
                 return
             self._app.new()
             self._list_panel.set_store(self._app.store)
-            self._editor_panel.set_entry(None)
+            self._list_panel.clear_selection()
+            self._editor_panel.reset_to_new_draft()
             self._update_title()
             self._status("New file created.")
         except Exception as e:
@@ -151,7 +155,8 @@ class MainWindow(QMainWindow):
             return
 
         self._list_panel.set_store(self._app.store)
-        self._editor_panel.set_entry(None)
+        self._list_panel.clear_selection()
+        self._editor_panel.reset_to_new_draft()
         self._update_title()
         self._status(f"Opened: {path}")
 
@@ -223,15 +228,32 @@ class MainWindow(QMainWindow):
 
     def _on_new_entry(self):
         try:
-            entry = Entry(title="New Entry")
-            self._app.add_entry(entry)
-            self._list_panel.refresh()
-            self._list_panel.select_entry(entry)
-            self._editor_panel.set_entry(entry)
-            self._update_title()
+            # 已是空白草稿：无提示、不重复 reset
+            if self._editor_panel.is_blank_draft():
+                return
+            if self._editor_panel.uncommitted_input():
+                msg = (
+                    "The current entry has edits not applied yet. Start a new blank entry and lose those edits?"
+                    if self._editor_panel.editor_differs_from_loaded_entry()
+                    and not self._editor_panel.pending_add
+                    else "Replace the current draft with a new empty entry?"
+                )
+                reply = QMessageBox.question(
+                    self,
+                    "Discard?",
+                    msg,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+            self._list_panel.clear_selection()
+            self._editor_panel.reset_to_new_draft()
         except Exception as e:
             traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
+
+    def _on_pending_entry_discarded(self):
+        self._update_title()
 
     def _on_delete_entry(self):
         try:
@@ -247,15 +269,27 @@ class MainWindow(QMainWindow):
                 return
             self._app.remove_entry(entry)
             self._list_panel.refresh()
-            self._editor_panel.set_entry(None)
+            self._list_panel.clear_selection()
+            self._editor_panel.reset_to_new_draft()
             self._update_title()
         except Exception as e:
             traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
 
-    def _on_entry_selected(self, entry: Entry):
+    @Slot(object, int)
+    def _on_entry_selected(self, entry: Entry, previous_row: int):
         try:
-            self._editor_panel.set_entry(entry)
+            if self._editor_panel.uncommitted_input():
+                reply = QMessageBox.question(
+                    self,
+                    "Discard?",
+                    "You have a draft or unapplied edits. Switch entry and lose them?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    self._list_panel.set_current_row_silent(previous_row)
+                    return
+            self._editor_panel.set_entry(entry, pending_add=False)
         except Exception as e:
             traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
@@ -264,9 +298,19 @@ class MainWindow(QMainWindow):
     def _on_entry_changed(self, entry, refresh_list):
         """Must match EntryEditorPanel.entry_changed Signal(object, bool) — no default args on refresh_list or PySide may not register the slot correctly."""
         try:
-            self._app.update_entry(entry)
+            is_new = entry not in self._app.store.entries
+            if is_new:
+                self._app.add_entry(entry)
+            else:
+                self._app.update_entry(entry)
             if refresh_list:
                 self._list_panel.refresh()
+                if is_new:
+                    # Was draft → now in list; new Apply must be a new Entry, not update same row
+                    self._list_panel.clear_selection()
+                    self._editor_panel.reset_to_new_draft()
+                else:
+                    self._list_panel.select_entry(entry)
             self._update_title()
         except Exception as e:
             traceback.print_exception(type(e), e, e.__traceback__)
@@ -278,14 +322,14 @@ class MainWindow(QMainWindow):
 
     def _confirm_discard(self) -> bool:
         """Return True if it is safe to discard current state."""
-        if not self._app.dirty:
-            return True
-        reply = QMessageBox.question(
-            self, "Unsaved Changes",
-            "You have unsaved changes. Discard them?",
-            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-        )
-        return reply == QMessageBox.StandardButton.Discard
+        if self._app.dirty or self._editor_panel.uncommitted_input():
+            reply = QMessageBox.question(
+                self, "Unsaved Changes",
+                "You have unsaved changes or a draft not yet applied. Discard?",
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            )
+            return reply == QMessageBox.StandardButton.Discard
+        return True
 
     def _update_title(self):
         name = os.path.basename(self._app.path) if self._app.path else "Untitled"

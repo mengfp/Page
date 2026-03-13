@@ -7,7 +7,7 @@ Layout:
     [New Entry button              ]
 
 Signals:
-    entry_selected(Entry)   - emitted when user selects an entry
+    entry_selected(Entry, int) — (entry, previous_row); previous_row -1 if none
     new_entry_requested()   - emitted when user clicks New Entry
 """
 
@@ -23,7 +23,7 @@ _ALL = "All"
 
 
 class EntryListPanel(QWidget):
-    entry_selected = Signal(object)   # Entry
+    entry_selected = Signal(object, int)  # Entry, previous_row (-1 = no selection)
     new_entry_requested = Signal()
 
     def __init__(self, parent=None):
@@ -87,6 +87,23 @@ class EntryListPanel(QWidget):
         if 0 <= row < len(self._displayed):
             return self._displayed[row]
         return None
+
+    def clear_selection(self) -> None:
+        """Clear list selection (e.g. when starting a draft new entry)."""
+        self._entry_list.blockSignals(True)
+        self._entry_list.clearSelection()
+        self._entry_list.setCurrentRow(-1)
+        self._entry_list.blockSignals(False)
+
+    def set_current_row_silent(self, row: int) -> None:
+        """Restore list selection without emitting entry_selected."""
+        self._entry_list.blockSignals(True)
+        if row < 0:
+            self._entry_list.clearSelection()
+            self._entry_list.setCurrentRow(-1)
+        else:
+            self._entry_list.setCurrentRow(row)
+        self._entry_list.blockSignals(False)
 
     # ------------------------------------------------------------------
     # Internal
@@ -156,5 +173,7 @@ class EntryListPanel(QWidget):
 
     def _on_selection_changed(self, current: QListWidgetItem, previous: QListWidgetItem) -> None:
         entry = self.current_entry()
-        if entry is not None:
-            self.entry_selected.emit(entry)
+        if entry is None:
+            return
+        prev_row = self._entry_list.row(previous) if previous is not None else -1
+        self.entry_selected.emit(entry, prev_row)

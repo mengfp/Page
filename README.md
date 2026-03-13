@@ -1,42 +1,56 @@
 # Page
 
-A simple encrypted notes manager for Windows.
+Windows 下的本地加密笔记：数据用口令加密，只保存在本机 `.page` 文件中。
 
-## Features
+## 功能
 
-- Store notes as age-encrypted JSON files
-- Each note has a title, tags, and free-form text content
-- Search by keyword, filter by tag
-- Passphrase-based encryption — no keys to manage
-- No cloud, no accounts, no telemetry — data stays local
+- 笔记存成 age 口令加密的 JSON（UTF-8，不压缩）
+- 每条笔记：标题、标签、正文
+- 关键词搜索、按标签筛选
+- 无账号、无云、无联网逻辑（除非你自己拷贝文件）
 
-## Requirements
+## 环境（仅 Windows）
 
-- Python 3.11+
-- [age](https://github.com/FiloSottile/age/releases) — download and place `age.exe` and `age-plugin-batchpass.exe` in the project directory
+- **Python 3.11+**（开发/直接运行源码时）
+- **age（Windows）**  
+  必须与程序能加载到的目录放在一起，且文件名固定为：
+  - `age.exe`
+  - `age-plugin-batchpass.exe`  
 
-## Installation
+  可从 [age releases](https://github.com/FiloSottile/age/releases) 下载 Windows 包，把上述两个 exe 放到：
+  - **源码运行**：与本项目里 `crypto.py` 同一目录（项目根目录），或  
+  - **PyInstaller 单文件**：打进 bundle 后由 `sys._MEIPASS` 查找（需把两个 exe 一并打进资源）  
+  - **发布文件夹**：整个文件夹里包含 `Page.exe`（或 `python main.py` 的启动方式）+ 两个 age 的 exe + 依赖，**两个 age 的 exe 必须与主程序/脚本同目录**（与当前 `crypto.py` 逻辑一致）
+
+## 安装（开发）
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+## 运行
 
 ```bash
 python main.py
 ```
 
-- **New Entry**: create a note
-- **Apply**: save edits to the current note
-- **Cancel**: discard edits
-- **File → Save**: encrypt and save to a `.page` file
-- **File → Open**: open and decrypt a `.page` file
+## 分发建议
 
-## File Format
+- **单 exe**：用 PyInstaller 等打包时，把 `age.exe` 和 `age-plugin-batchpass.exe` 加入数据文件，并保证运行时的 `_MEIPASS` 里能访问到（与 `crypto._age_dir()` 一致）。  
+- **文件夹分发**：用户解压后目录内包含主程序 + 两个 age 的 exe，无需单独配置 PATH（程序会把该目录插入 PATH 供 age 找插件）。
 
-Notes are stored as JSON, encrypted with [age](https://age-encryption.org) using passphrase mode (scrypt). Files use the `.page` extension.
+## 使用说明
 
-## License
+- **File → New**：新建未保存文档  
+- **File → Open**：打开 `.page`（需口令，不允许空口令）  
+- **File → Save / Save As**：保存加密文件  
+- **Entry → New Entry**：新建一条笔记  
+- 编辑后点 **Apply** 写入当前条目；**Cancel** 放弃本次修改  
+
+## 文件格式
+
+解密后为 UTF-8 JSON 数组；每条为对象：`title`、`tags`、`content`、`modified`（ISO 8601）。整段 JSON 由 age（batchpass 插件）加密，扩展名 `.page`。
+
+## 许可证
 
 All rights reserved.

@@ -7,8 +7,11 @@ Layout:
     [Status Bar]
 """
 
+import os
+import traceback
+
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QSplitter, QFileDialog,
+    QMainWindow, QSplitter, QFileDialog,
     QMessageBox, QStatusBar,
 )
 from PySide6.QtCore import Qt, Slot
@@ -80,7 +83,6 @@ class MainWindow(QMainWindow):
         entry_menu = mb.addMenu("Entry")
 
         act_new_entry = QAction("New Entry", self)
-        act_new_entry.setShortcut(QKeySequence("Ctrl+N"))
         act_new_entry.triggered.connect(self._on_new_entry)
         entry_menu.addAction(act_new_entry)
 
@@ -116,13 +118,17 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_new(self):
-        if not self._confirm_discard():
-            return
-        self._app.new()
-        self._list_panel.set_store(self._app.store)
-        self._editor_panel.set_entry(None)
-        self._update_title()
-        self._status("New file created.")
+        try:
+            if not self._confirm_discard():
+                return
+            self._app.new()
+            self._list_panel.set_store(self._app.store)
+            self._editor_panel.set_entry(None)
+            self._update_title()
+            self._status("New file created.")
+        except Exception as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
+            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
 
     def _on_open(self):
         if not self._confirm_discard():
@@ -132,7 +138,6 @@ class MainWindow(QMainWindow):
         if not path:
             return
 
-        import os
         dlg = PassphraseDialog(self, filename=os.path.basename(path))
         if dlg.exec() != PassphraseDialog.DialogCode.Accepted:
             return
@@ -140,7 +145,8 @@ class MainWindow(QMainWindow):
         passphrase = dlg.passphrase()
         try:
             self._app.open(path, passphrase)
-        except RuntimeError as e:
+        except Exception as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Failed to open file:\n{e}")
             return
 
@@ -169,7 +175,8 @@ class MainWindow(QMainWindow):
 
         try:
             self._app.save_as(path, dlg.passphrase())
-        except RuntimeError as e:
+        except Exception as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Failed to save file:\n{e}")
             return
 
@@ -190,7 +197,8 @@ class MainWindow(QMainWindow):
 
         try:
             self._app.save_as(path, dlg.passphrase())
-        except RuntimeError as e:
+        except Exception as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Failed to save file:\n{e}")
             return
 
@@ -201,7 +209,8 @@ class MainWindow(QMainWindow):
     def _do_save(self):
         try:
             self._app.save()
-        except RuntimeError as e:
+        except Exception as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Failed to save:\n{e}")
             return
         self._editor_panel.refresh_modified()
@@ -213,39 +222,55 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_new_entry(self):
-        entry = Entry(title="New Entry")
-        self._app.add_entry(entry)
-        self._list_panel.refresh()
-        self._list_panel.select_entry(entry)
-        self._editor_panel.set_entry(entry)
-        self._update_title()
+        try:
+            entry = Entry(title="New Entry")
+            self._app.add_entry(entry)
+            self._list_panel.refresh()
+            self._list_panel.select_entry(entry)
+            self._editor_panel.set_entry(entry)
+            self._update_title()
+        except Exception as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
+            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
 
     def _on_delete_entry(self):
-        entry = self._list_panel.current_entry()
-        if entry is None:
-            return
-        reply = QMessageBox.question(
-            self, "Delete Entry",
-            f"Delete '{entry.title}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        self._app.remove_entry(entry)
-        self._list_panel.refresh()
-        self._editor_panel.set_entry(None)
-        self._update_title()
+        try:
+            entry = self._list_panel.current_entry()
+            if entry is None:
+                return
+            reply = QMessageBox.question(
+                self, "Delete Entry",
+                f"Delete '{entry.title}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            self._app.remove_entry(entry)
+            self._list_panel.refresh()
+            self._editor_panel.set_entry(None)
+            self._update_title()
+        except Exception as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
+            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
 
     def _on_entry_selected(self, entry: Entry):
-        self._editor_panel.set_entry(entry)
+        try:
+            self._editor_panel.set_entry(entry)
+        except Exception as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
+            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
 
     @Slot(object, bool)
     def _on_entry_changed(self, entry, refresh_list):
         """Must match EntryEditorPanel.entry_changed Signal(object, bool) — no default args on refresh_list or PySide may not register the slot correctly."""
-        self._app.update_entry(entry)
-        if refresh_list:
-            self._list_panel.refresh()
-        self._update_title()
+        try:
+            self._app.update_entry(entry)
+            if refresh_list:
+                self._list_panel.refresh()
+            self._update_title()
+        except Exception as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
+            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
 
     # ------------------------------------------------------------------
     # Helpers
@@ -263,7 +288,6 @@ class MainWindow(QMainWindow):
         return reply == QMessageBox.StandardButton.Discard
 
     def _update_title(self):
-        import os
         name = os.path.basename(self._app.path) if self._app.path else "Untitled"
         dirty = " *" if self._app.dirty else ""
         self.setWindowTitle(f"Page - {name}{dirty}")

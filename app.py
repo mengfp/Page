@@ -59,8 +59,11 @@ class App:
         Open and decrypt an existing .page file.
         Raises RuntimeError on wrong passphrase or corrupt file.
         """
-        with open(path, 'r', encoding='ascii') as f:
-            armor_text = f.read()
+        try:
+            with open(path, 'r', encoding='ascii') as f:
+                armor_text = f.read()
+        except OSError as e:
+            raise RuntimeError(f"Cannot read file: {e}") from e
 
         # Decrypt and deserialize (RuntimeError propagates to caller)
         raw = decrypt(armor_text, passphrase)
@@ -79,8 +82,10 @@ class App:
         Raises RuntimeError on failure.
         Uses write-then-replace for safety (avoids partial writes).
         """
-        assert self._path is not None, "No file path set"
-        assert self._passphrase is not None, "No passphrase set"
+        if self._path is None:
+            raise RuntimeError("No file path set")
+        if self._passphrase is None:
+            raise RuntimeError("No passphrase set")
         self._write(self._path, self._passphrase)
         self._dirty = False
 

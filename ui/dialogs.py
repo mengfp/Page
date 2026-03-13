@@ -33,14 +33,24 @@ class PassphraseDialog(QDialog):
         form.addRow("Passphrase:", self._passphrase_edit)
         layout.addLayout(form)
 
-        buttons = QDialogButtonBox(
+        self._open_buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        self._open_buttons.accepted.connect(self.accept)
+        self._open_buttons.rejected.connect(self.reject)
+        layout.addWidget(self._open_buttons)
 
-        self._passphrase_edit.returnPressed.connect(self.accept)
+        self._open_ok = self._open_buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self._open_ok.setEnabled(False)
+        self._passphrase_edit.textChanged.connect(self._update_open_ok_enabled)
+        self._passphrase_edit.returnPressed.connect(self._on_open_return)
+
+    def _update_open_ok_enabled(self) -> None:
+        self._open_ok.setEnabled(bool(self._passphrase_edit.text().strip()))
+
+    def _on_open_return(self) -> None:
+        if self._open_ok.isEnabled():
+            self.accept()
 
     def passphrase(self) -> str:
         return self._passphrase_edit.text()

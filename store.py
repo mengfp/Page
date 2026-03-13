@@ -45,11 +45,24 @@ class Entry:
 
     @staticmethod
     def from_dict(d: dict) -> 'Entry':
+        raw_tags = d.get('tags', [])
+        if isinstance(raw_tags, list):
+            tags = [str(t) for t in raw_tags]
+        else:
+            tags = []
+        modified_raw = d.get('modified')
+        if isinstance(modified_raw, str) and modified_raw:
+            try:
+                modified = datetime.fromisoformat(modified_raw)
+            except ValueError:
+                modified = _now()
+        else:
+            modified = _now()
         return Entry(
-            title=d.get('title', ''),
-            tags=d.get('tags', []),
-            content=d.get('content', ''),
-            modified=datetime.fromisoformat(d['modified']),
+            title=str(d.get('title', '') or ''),
+            tags=tags,
+            content=str(d.get('content', '') or ''),
+            modified=modified,
         )
 
     def matches(self, keyword: str) -> bool:
@@ -77,10 +90,18 @@ class Store:
 
     @staticmethod
     def from_bytes(raw: bytes) -> 'Store':
-        """Deserialize store from JSON bytes."""
-        data = json.loads(raw.decode('utf-8'))
+        """Deserialize store from JSON bytes. Raises RuntimeError if format is invalid."""
+        try:
+            data = json.loads(raw.decode('utf-8'))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise RuntimeError(f"Invalid JSON: {e}") from e
+        if not isinstance(data, list):
+            raise RuntimeError("Store file must be a JSON array of entries")
         store = Store()
-        store.entries = [Entry.from_dict(d) for d in data]
+        for i, item in enumerate(data):
+            if not isinstance(item, dict):
+                raise RuntimeError(f"Entry at index {i} is not an object")
+            store.entries.append(Entry.from_dict(item))
         return store
 
     # ------------------------------------------------------------------

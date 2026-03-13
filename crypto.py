@@ -6,8 +6,8 @@ Dependencies:
     as this script or the PyInstaller bundle.
 
 Flow:
-    Encrypt: plaintext bytes -> zstd compress -> age encrypt (armor) -> str
-    Decrypt: str -> normalize line endings -> age decrypt -> zstd decompress -> plaintext bytes
+    Encrypt: plaintext bytes -> age encrypt (armor) -> str
+    Decrypt: str -> normalize line endings -> age decrypt -> plaintext bytes
 
 Passphrase is passed via AGE_PASSPHRASE environment variable.
 No console window is created on Windows.
@@ -17,7 +17,6 @@ No temporary files are used.
 import os
 import sys
 import subprocess
-import zstandard as zstd
 
 
 def _age_dir() -> str:
@@ -63,43 +62,27 @@ def _run(args: list[str], stdin_data: bytes, passphrase: str) -> bytes:
 
 def encrypt(plaintext: bytes, passphrase: str) -> str:
     """
-    Compress and encrypt plaintext bytes with the given passphrase.
+    Encrypt plaintext bytes with the given passphrase (no compression).
     Returns armor-encoded ciphertext as a str.
     Raises RuntimeError on failure.
     """
-    # Step 1: compress
-    cctx = zstd.ZstdCompressor(level=3)
-    compressed = cctx.compress(plaintext)
-
-    # Step 2: encrypt with age + batchpass plugin, armor output
     ciphertext = _run(
         ['-e', '-j', 'batchpass', '-a'],
-        stdin_data=compressed,
+        stdin_data=plaintext,
         passphrase=passphrase,
     )
-
     return ciphertext.decode('ascii')
 
 
 def decrypt(armor_text: str, passphrase: str) -> bytes:
     """
     Decrypt armor-encoded ciphertext with the given passphrase.
-    Returns decompressed plaintext bytes.
+    Returns plaintext bytes (e.g. UTF-8 JSON).
     Raises RuntimeError on wrong passphrase or corrupt data.
     """
-    # Step 1: normalize line endings before passing to age
     normalized = armor_text.replace('\r\n', '\n').encode('ascii')
-
-    # Step 2: decrypt
-    compressed = _run(
+    return _run(
         ['-d', '-j', 'batchpass'],
         stdin_data=normalized,
         passphrase=passphrase,
     )
-
-    # Step 3: decompress
-    dctx = zstd.ZstdDecompressor()
-    try:
-        return dctx.decompress(compressed)
-    except zstd.ZstdError as e:
-        raise RuntimeError(f"Decompression failed: {e}")

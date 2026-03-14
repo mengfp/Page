@@ -69,7 +69,7 @@ pyinstaller Page.spec
 5. **分发**：把 **`dist/Page` 整个文件夹** 拷走即可（勿只拷单个 exe）。  
 6. 关联 `.page` 时，注册表里命令行指向 **`...\Page\Page.exe" "%1"`**。
 
-打包体积：`Page.spec` 里已排除未使用的 Qt 模块（QML/WebEngine/多媒体等），一般比默认 PyInstaller 瘦一截。若启动报错，从 `excludes` 里删掉相关模块再打包。本机若安装 [UPX](https://github.com/upx/upx)，`upx=True` 还可再压一点 DLL。
+打包体积：onedir 主要体积来自 PySide6 与 Python 运行时；`Page.spec` 未做模块排除，避免误删导致启动失败。本机若安装 [UPX](https://github.com/upx/upx)，`upx=True` 还可再压一点 DLL。
 
 窗口图标：`EXE(icon=ui/page.ico)` 只影响资源管理器里 exe 的图标；**运行后标题栏/任务栏** 靠 `setWindowIcon` 加载 **`page.ico`**（`datas` 打进 `_MEIPASS`）。**`ui/password.ico`** 可选，供 **打开文件 / 新建与 Save As 设口令** 两个对话框；存在时 `Page.spec` 会一并打包。
 

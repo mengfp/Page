@@ -68,7 +68,9 @@ class TagChipBar(QWidget):
         self._add_tag_btn = QPushButton("Add")
         self._add_tag_btn.setFlat(True)
         self._add_tag_btn.setFixedHeight(self._CHIP_H + 6)
-        self._add_tag_btn.setToolTip("Add tag (comma = several); suggestions while typing")
+        self._add_tag_btn.setToolTip(
+            "Add tags separated by commas. Suggestions as you type."
+        )
         self._add_tag_btn.clicked.connect(self._on_new_clicked)
         row.addWidget(self._add_tag_btn)
 
@@ -220,12 +222,13 @@ class EntryEditorPanel(QWidget):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         self._new_btn = QPushButton("New")
-        self._new_btn.setToolTip("New blank draft (not in list until Apply)")
+        self._new_btn.setToolTip("Create a blank draft.")
         self._new_btn.clicked.connect(self.new_draft_requested.emit)
         self._apply_btn = QPushButton("Apply")
-        self._apply_btn.setToolTip("Add or update entry in list")
+        self._apply_btn.setToolTip("In memory until File → Save.")
         self._apply_btn.clicked.connect(self._on_apply)
         self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setToolTip("Revert this form to last Apply.")
         self._cancel_btn.clicked.connect(self._on_cancel)
         btn_row.addWidget(self._new_btn)
         btn_row.addWidget(self._apply_btn)

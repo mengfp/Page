@@ -142,6 +142,7 @@
 
 ## 7. 待讨论 / 已知缺口（可打勾迭代）
 
+- Search、New / Apply / Cancel 有 tooltip（Date 只读未加）。
 - （已做）列表切换前已与 §6 一致确认。
 - 文案中英混用是否统一？
 - 是否需要最小自动化测试（哪怕只测 store + 草稿状态机）？
@@ -162,4 +163,5 @@
 | 修订   | **Help → About Page**；版本号在 `version.py`。 |
 | 修订   | 表单 **Date:**（原 Modified）；数据字段仍为 `modified`。 |
 | 修订   | §1 原则：界面与 developer 命名可不同词。 |
+| 修订   | Search / New / Apply / Cancel tooltip。 |
 

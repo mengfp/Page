@@ -37,6 +37,9 @@ class EntryListPanel(QWidget):
 
         self._search_edit = QLineEdit()
         self._search_edit.setPlaceholderText("Search...")
+        self._search_edit.setToolTip(
+            "Filter by title, body and tags. Combine with the tag list on the left."
+        )
         self._search_edit.textChanged.connect(self._refresh)
         layout.addWidget(self._search_edit)
 

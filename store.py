@@ -110,7 +110,9 @@ class Store:
             "version": __version__,
             "entries": [entry.to_dict() for entry in self.entries],
         }
-        return json.dumps(envelope, ensure_ascii=False, indent=2).encode("utf-8")
+        return json.dumps(
+            envelope, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
 
     @staticmethod
     def from_bytes(raw: bytes) -> "Store":

@@ -153,4 +153,5 @@
 | 修订   | 去掉 **Entry** 菜单；**Delete note** 并入 **File**（仍可用 Delete 键）。 |
 | 修订   | **Delete note** 从 File 移到 **列表右键**；Delete 键保留。 |
 | 修订   | Tags：更小 chip；无 ×；**右键 Delete**；**Tags 行右侧 Add** + 对话框补全。 |
+| 修订   | 左栏 Tags 与 Search 输入区左缘对齐（占位与输入同一基准，show/resize 同步）。 |
 

@@ -3,7 +3,8 @@ ui/entry_list.py - left panel: search bar, tag sidebar, entry list
 
 Layout:
     [Search bar                    ]
-    [Tag list      | Entry list    ]
+    [ Tags (label) | Entry list    ]
+    [ tag list     |               ]
 
 Signals:
     entry_selected(Entry, int) — (entry, previous_row); previous_row -1 if none
@@ -11,9 +12,10 @@ Signals:
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QLineEdit, QMenu,
+    QLineEdit, QMenu, QLabel, QStyle, QStyleOptionFrame,
 )
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QPoint
+from PySide6.QtGui import QFont, QPalette
 
 from store import Store, Entry
 
@@ -41,10 +43,22 @@ class EntryListPanel(QWidget):
         mid_row = QHBoxLayout()
         mid_row.setSpacing(4)
 
+        tag_col = QVBoxLayout()
+        tag_col.setSpacing(2)
+        tag_col.setContentsMargins(0, 0, 0, 0)
+        self._tags_heading = QLabel("Tags")
+        self._tags_heading.setFixedWidth(100)
+        self._tags_heading.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._tags_heading.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+        self._tags_heading.setMargin(0)
+        tag_col.addWidget(self._tags_heading)
         self._tag_list = QListWidget()
         self._tag_list.setFixedWidth(100)
         self._tag_list.currentItemChanged.connect(self._refresh)
-        mid_row.addWidget(self._tag_list)
+        tag_col.addWidget(self._tag_list)
+        mid_row.addLayout(tag_col)
 
         self._entry_list = QListWidget()
         self._entry_list.currentItemChanged.connect(self._on_selection_changed)
@@ -53,6 +67,31 @@ class EntryListPanel(QWidget):
         mid_row.addWidget(self._entry_list, 1)
 
         layout.addLayout(mid_row, 1)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._sync_tags_heading_align()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._sync_tags_heading_align()
+
+    def _sync_tags_heading_align(self) -> None:
+        """Align Tags with Search line-edit contents (placeholder or typed text)."""
+        if not self._search_edit.isVisible():
+            return
+        opt = QStyleOptionFrame()
+        self._search_edit.initStyleOption(opt)
+        cr = self._search_edit.style().subElementRect(
+            QStyle.SubElement.SE_LineEditContents, opt, self._search_edit
+        )
+        target_x = self._search_edit.mapTo(self, cr.topLeft()).x()
+        heading_left = self._tags_heading.mapTo(self, QPoint(0, 0)).x()
+        delta = target_x - heading_left
+        self._tags_heading.setContentsMargins(max(0, delta), 0, 0, 0)
+        self._tags_heading.setStyleSheet(
+            f"margin-left: {delta}px;" if delta < 0 else ""
+        )
 
     def set_store(self, store: Store) -> None:
         """Load a new store and refresh the display."""
@@ -119,7 +158,12 @@ class EntryListPanel(QWidget):
 
         self._tag_list.blockSignals(True)
         self._tag_list.clear()
-        self._tag_list.addItem(_ALL)
+        all_item = QListWidgetItem(_ALL)
+        f = QFont(self._tag_list.font())
+        f.setItalic(True)
+        all_item.setFont(f)
+        all_item.setToolTip("Show all notes (not a tag name)")
+        self._tag_list.addItem(all_item)
         for tag in self._store.all_tags():
             self._tag_list.addItem(tag)
 

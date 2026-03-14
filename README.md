@@ -54,6 +54,21 @@ python -m unittest discover -s tests -p "test_*.py"
 
 **只考虑文件夹分发**：主程序 + 两个 age 的 exe 同目录（PyInstaller 用 **onedir**，勿用 onefile）。不单 exe，省去解压与路径折腾。
 
+## 生成 Page.exe（PyInstaller onedir）
+
+1. 项目根目录已放好 **`age.exe`**、**`age-plugin-batchpass.exe`**、**`Page.ico`**（与开发时一致）。  
+2. 安装打包工具：`pip install pyinstaller`  
+3. 在项目根执行：
+
+```bash
+pyinstaller Page.spec
+```
+
+4. 结果目录：**`dist/Page/`**  
+   - 运行 **`Page.exe`**（同目录下 `_internal` 内已含 Python、PySide6 及两个 age；`crypto` 在 frozen 下用 `_MEIPASS`，无需手抄 dll）。  
+5. **分发**：把 **`dist/Page` 整个文件夹** 拷走即可（勿只拷单个 exe）。  
+6. 关联 `.page` 时，注册表里命令行指向 **`...\Page\Page.exe" "%1"`**。
+
 ## 使用说明
 
 - **File → New**：新建未保存文档  

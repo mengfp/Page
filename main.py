@@ -10,6 +10,7 @@ import traceback
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 from main_window import MainWindow
+from version import __version__
 
 
 def _install_excepthook() -> None:
@@ -38,6 +39,7 @@ def _install_excepthook() -> None:
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Page")
+    app.setApplicationVersion(__version__)
     _install_excepthook()
 
     try:

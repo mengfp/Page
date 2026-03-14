@@ -205,7 +205,7 @@ class EntryEditorPanel(QWidget):
         self._modified_edit.setReadOnly(True)
         self._modified_edit.setPlaceholderText("")
         self._modified_edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        form.addRow("Modified:", self._modified_edit)
+        form.addRow("Date:", self._modified_edit)
         layout.addLayout(form)
 
         line = QFrame()

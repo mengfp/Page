@@ -19,6 +19,7 @@ from PySide6.QtGui import QAction, QKeySequence, QCloseEvent
 
 from app import App
 from store import Entry
+from version import APP_NAME, __version__
 from ui.entry_list import EntryListPanel
 from ui.entry_editor import EntryEditorPanel
 from ui.dialogs import PassphraseDialog, NewPassphraseDialog
@@ -90,6 +91,21 @@ class MainWindow(QMainWindow):
         act_delete.setShortcut(QKeySequence.StandardKey.Delete)
         act_delete.triggered.connect(self._on_delete_entry)
         self.addAction(act_delete)
+
+        help_menu = mb.addMenu("Help")
+        act_about = QAction("About Page", self)
+        act_about.setMenuRole(QAction.MenuRole.AboutRole)
+        act_about.triggered.connect(self._on_about)
+        help_menu.addAction(act_about)
+
+    @Slot()
+    def _on_about(self) -> None:
+        QMessageBox.about(
+            self,
+            f"About {APP_NAME}",
+            f"{APP_NAME}\n\nVersion {__version__}\n\n"
+            "Local encrypted notes. Data stays on this machine.",
+        )
 
     def _build_ui(self):
         splitter = QSplitter(Qt.Orientation.Horizontal)

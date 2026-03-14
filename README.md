@@ -36,6 +36,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
+版本号在 **`version.py`**（发布前改 `__version__`）；菜单 **Help → About Page** 可查看。
+
 ## 分发建议
 
 - **单 exe**：用 PyInstaller 等打包时，把 `age.exe` 和 `age-plugin-batchpass.exe` 加入数据文件，并保证运行时的 `_MEIPASS` 里能访问到（与 `crypto._age_dir()` 一致）。  

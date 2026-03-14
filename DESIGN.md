@@ -9,6 +9,7 @@
 
 - 单机笔记，数据进 `.page` 文件（JSON + age）。
 - **简单可靠**优先，避免过度设计（无 UUID、无条目间引用等，除非以后明确要）。
+- **界面文案 ≠ 代码命名**：给用户看的标签（如 Date）不必与字段名（如 `modified`）同一词；代码以清晰、稳定为主，界面以好懂为主。
 
 ---
 
@@ -32,7 +33,7 @@
 | ---- | ---------------------------------------------------------------- |
 | 文档   | 新文档：`path = null`，`dirty = false`，`entries = []`。                |
 | 左侧列表 | 空；**无选中**。                                                       |
-| 右侧   | **空白草稿**：新 `Entry` 实例，`pending_add = true`，**Modified 不显示**（空白）。 |
+| 右侧   | **空白草稿**：新 `Entry` 实例，`pending_add = true`，**Date 栏不显示**（空白）。 |
 | 标题栏  | `Page - Untitled`（无 `*`）。                                        |
 
 
@@ -43,8 +44,8 @@
 
 | 概念      | 含义                                                                                    |
 | ------- | ------------------------------------------------------------------------------------- |
-| **草稿**  | 右侧正在编的 `Entry`，**尚未** `add_entry` 进 `store.entries`。`pending_add = true`，Modified 空白。**Apply 才进列表。** |
-| **已入库** | 已在 `store.entries` 里；从列表点开会 `pending_add = false`，Modified 显示时间。                      |
+| **草稿**  | 右侧正在编的 `Entry`，**尚未** `add_entry` 进 `store.entries`。`pending_add = true`，Date 栏空白。**Apply 才进列表。** |
+| **已入库** | 已在 `store.entries` 里；从列表点开会 `pending_add = false`，Date 栏显示 `modified` 时间。                      |
 
 
 **New draft**（右侧按钮 **New**）= 换一张空白草稿（新 `Entry()`），**不是**往列表里插一条。列表只在 **Apply** 时增加一行。
@@ -79,9 +80,13 @@
 
 **确认放弃**（§6）；Discard 才关闭。
 
+### 5.6 Help → About Page
+
+- 显示应用名、版本号（见 `version.py`）、一句说明（本地加密、数据在本机）。
+
 ---
 
-### 5.6 New draft（右侧 **New**）
+### 5.7 New draft（右侧 **New**）
 
 理念：**新草稿**，不是「在容器里插入新 entry」；入库仅通过 **Apply**。
 
@@ -91,19 +96,19 @@
 | **2. 已入库且无改动**（列表选中某条，表单与 `_entry` 一致） | 否 | 列表 **取消选中**；右侧 **空白草稿**（新 `Entry()`）。 |
 | **非空草稿** 或 **已入库但有未 Apply 修改** | 是 | 确认后再：无选中 + 空白草稿。 |
 
-### 5.7 左侧列表：选中某条
+### 5.8 左侧列表：选中某条
 
 - 若存在 **非空草稿** 或 **已入库未 Apply**（§6）→ 先问是否放弃再切换；**No** → 保持原选中行、右侧不变。
-- 否则：右侧加载该条，`pending_add = false`，Modified 显示。
+- 否则：右侧加载该条，`pending_add = false`，Date 栏显示。
 
-### 5.8 Delete（**列表右键 → Delete**；快捷键 **Delete** 删当前选中条）
+### 5.9 Delete（**列表右键 → Delete**；快捷键 **Delete** 删当前选中条）
 
 - 右键点在行上 → **Delete** → 确认 → 删该条。
 - 快捷键 **Delete**：列表有选中时同逻辑；无选中 → **无操作**。
 
 ---
 
-### 5.9 右侧 Apply
+### 5.10 右侧 Apply
 
 1. 表单写入当前 `_entry`，`touch()`，发 `entry_changed(entry, true)`。
 
@@ -114,7 +119,7 @@
 - **已在 store**（从列表打开后编辑）  
 → `update_entry` → 刷新 → **仍选中该条**。
 
-### 5.10 右侧 Cancel
+### 5.11 右侧 Cancel
 
 - **草稿** → 再 **空白草稿**。
 - **已入库条目** → 表单恢复为该条已 Apply 的内容（不写盘）。
@@ -154,4 +159,7 @@
 | 修订   | **Delete note** 从 File 移到 **列表右键**；Delete 键保留。 |
 | 修订   | Tags：更小 chip；无 ×；**右键 Delete**；**Tags 行右侧 Add** + 对话框补全。 |
 | 修订   | 左栏 Tags 与 Search 输入区左缘对齐（占位与输入同一基准，show/resize 同步）。 |
+| 修订   | **Help → About Page**；版本号在 `version.py`。 |
+| 修订   | 表单 **Date:**（原 Modified）；数据字段仍为 `modified`。 |
+| 修订   | §1 原则：界面与 developer 命名可不同词。 |
 

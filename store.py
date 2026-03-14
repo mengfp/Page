@@ -7,7 +7,8 @@ Data structure (in memory):
 
 Persistence:
     Serialized as JSON, encrypted by crypto.py.
-    The Store does not know about encryption; it only produces/consumes bytes.
+    On disk (after decrypt): { id, version, entries }. id = PAGE_DOCUMENT_ID;
+    version = version.__version__ (same as Page app version—no separate format number).
 
 Search:
     All search is performed in-memory after decryption.
@@ -15,7 +16,16 @@ Search:
 
 import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
+
+from version import PAGE_DOCUMENT_ID, __version__
+
+# Limits (reject oversize / odd types)
+_MAX_ENTRIES = 50_000
+_MAX_TITLE_LEN = 20_000
+_MAX_TAGS_PER_ENTRY = 2_000
+_MAX_TAG_LEN = 500
+_MAX_CONTENT_BYTES = 20 * 1024 * 1024  # 20 MiB UTF-8 per entry
 
 
 class Entry:
@@ -44,26 +54,36 @@ class Entry:
         }
 
     @staticmethod
-    def from_dict(d: dict) -> 'Entry':
-        raw_tags = d.get('tags', [])
-        if isinstance(raw_tags, list):
-            tags = [str(t) for t in raw_tags]
-        else:
-            tags = []
-        modified_raw = d.get('modified')
-        if isinstance(modified_raw, str) and modified_raw:
-            try:
-                modified = datetime.fromisoformat(modified_raw)
-            except ValueError:
-                modified = _now()
-        else:
-            modified = _now()
-        return Entry(
-            title=str(d.get('title', '') or ''),
-            tags=tags,
-            content=str(d.get('content', '') or ''),
-            modified=modified,
-        )
+    def from_dict(d: dict) -> "Entry":
+        for key in ("title", "tags", "content", "modified"):
+            if key not in d:
+                raise RuntimeError(f"Entry missing required key {key!r}")
+        if not isinstance(d["title"], str):
+            raise RuntimeError("Entry title must be a string")
+        if not isinstance(d["tags"], list) or not all(
+            isinstance(t, str) for t in d["tags"]
+        ):
+            raise RuntimeError("Entry tags must be a list of strings")
+        if not isinstance(d["content"], str):
+            raise RuntimeError("Entry content must be a string")
+        if not isinstance(d["modified"], str) or not d["modified"].strip():
+            raise RuntimeError("Entry modified must be a non-empty ISO date string")
+        title = d["title"]
+        tags = list(d["tags"])
+        content = d["content"]
+        try:
+            modified = datetime.fromisoformat(d["modified"])
+        except ValueError as e:
+            raise RuntimeError("Entry modified is not valid ISO-8601") from e
+        if len(title) > _MAX_TITLE_LEN:
+            raise RuntimeError("Entry title too long")
+        if len(tags) > _MAX_TAGS_PER_ENTRY:
+            raise RuntimeError("Entry has too many tags")
+        if any(len(t) > _MAX_TAG_LEN for t in tags):
+            raise RuntimeError("Entry tag too long")
+        if len(content.encode("utf-8")) > _MAX_CONTENT_BYTES:
+            raise RuntimeError("Entry content too large")
+        return Entry(title=title, tags=tags, content=content, modified=modified)
 
     def matches(self, keyword: str) -> bool:
         """Full-text search: title + tags + content."""
@@ -84,24 +104,50 @@ class Store:
     # ------------------------------------------------------------------
 
     def to_bytes(self) -> bytes:
-        """Serialize store to JSON bytes (UTF-8)."""
-        data = [entry.to_dict() for entry in self.entries]
-        return json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
+        """Serialize: id + version (__version__) + entries—no extra format version."""
+        envelope = {
+            "id": PAGE_DOCUMENT_ID,
+            "version": __version__,
+            "entries": [entry.to_dict() for entry in self.entries],
+        }
+        return json.dumps(envelope, ensure_ascii=False, indent=2).encode("utf-8")
 
     @staticmethod
-    def from_bytes(raw: bytes) -> 'Store':
-        """Deserialize store from JSON bytes. Raises RuntimeError if format is invalid."""
+    def from_bytes(raw: bytes) -> "Store":
+        """Deserialize Page envelope; version is whichever Page build wrote the file."""
         try:
-            data = json.loads(raw.decode('utf-8'))
+            data: Any = json.loads(raw.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise RuntimeError(f"Invalid JSON: {e}") from e
-        if not isinstance(data, list):
-            raise RuntimeError("Store file must be a JSON array of entries")
+
+        if not isinstance(data, dict):
+            raise RuntimeError(
+                "Not a Page file: root must be an object with id, version, entries"
+            )
+        if data.get("id") != PAGE_DOCUMENT_ID:
+            raise RuntimeError(
+                "Not a Page file: id does not match Page document type "
+                f"(expected {PAGE_DOCUMENT_ID!r})"
+            )
+        if not isinstance(data.get("version"), str) or not str(data.get("version")).strip():
+            raise RuntimeError(
+                "Not a Page file: version must be a non-empty string (Page app version)"
+            )
+        if not isinstance(data.get("entries"), list):
+            raise RuntimeError("Not a Page file: entries must be a list")
+        items = data["entries"]
+
+        if len(items) > _MAX_ENTRIES:
+            raise RuntimeError("Too many entries in file")
+
         store = Store()
-        for i, item in enumerate(data):
+        for i, item in enumerate(items):
             if not isinstance(item, dict):
                 raise RuntimeError(f"Entry at index {i} is not an object")
-            store.entries.append(Entry.from_dict(item))
+            try:
+                store.entries.append(Entry.from_dict(item))
+            except RuntimeError as e:
+                raise RuntimeError(f"Entry at index {i}: {e}") from e
         return store
 
     # ------------------------------------------------------------------

@@ -83,7 +83,7 @@ pyinstaller Page.spec
 
 ## 文件格式
 
-解密后为 UTF-8 JSON 数组；每条为对象：`title`、`tags`、`content`、`modified`（ISO 8601）。整段 JSON 由 age（batchpass 插件）加密，扩展名 `.page`。
+解密后必须为 UTF-8 JSON 对象，根字段：**`id`**（`PAGE_DOCUMENT_ID`）、**`version`**（与 **`version.__version__` 同源，即 Page 版本号；保存时写入，不另设文件格式版本）、**`entries`**。每条 entry：**`title`**、**`tags`**、**`content`**、**`modified`**。整段由 age（batchpass）加密，扩展名 `.page`。
 
 ## 许可证
 

@@ -1,5 +1,5 @@
 """
-ui/entry_editor.py - right panel: title, tags (chips + Add), content, New/Apply/Cancel
+ui/entry_editor.py - right panel: title, date, tags (chips + Add), content, New/Apply/Cancel
 """
 
 from PySide6.QtWidgets import (
@@ -237,15 +237,13 @@ class EntryEditorPanel(QWidget):
         )
 
         form = QFormLayout()
+        form.setContentsMargins(4, 0, 0, 0)  # nudge Title / Date / Tags right slightly
         form.setHorizontalSpacing(20)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._title_edit = QLineEdit()
         self._title_edit.setObjectName("editorTitle")
         self._title_edit.setPlaceholderText("Title")
         form.addRow("Title:", self._title_edit)
-
-        self._tag_bar = TagChipBar()
-        form.addRow("Tags:", self._tag_bar)
 
         self._modified_edit = QLineEdit()
         self._modified_edit.setObjectName("editorDateReadonly")
@@ -255,6 +253,9 @@ class EntryEditorPanel(QWidget):
         self._modified_edit.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._modified_edit.setFrame(False)
         form.addRow("Date:", self._modified_edit)
+
+        self._tag_bar = TagChipBar()
+        form.addRow("Tags:", self._tag_bar)
         layout.addLayout(form)
 
         line = QFrame()

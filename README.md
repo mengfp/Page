@@ -8,7 +8,7 @@ Windows 下的本地加密笔记：数据用口令加密，只保存在本机 `.
 
 - 笔记存成 age 口令加密的 JSON（UTF-8，不压缩）
 - 每条笔记：标题、标签（小 **chip**；**Tags 右侧 Add**；**右键 chip → Delete**）、正文
-- 关键词搜索、按标签筛选
+- 关键词搜索、按标签筛选；左侧笔记列表 **Title | Date | Tags**（Tags 逗号分隔，悬停看全文）
 - 无账号、无云、无联网逻辑（除非你自己拷贝文件）
 
 ## 环境（仅 Windows）
@@ -47,7 +47,7 @@ python main.py
 
 - **File → New**：新建未保存文档  
 - **File → Open**：打开 `.page`（需口令，不允许空口令）  
-- **File → Save / Save As**：保存加密文件  
+- **File → Save / Save As**：先把当前编辑 Apply 进内存，再加密写 `.page`（无单独只写盘）  
 - **右侧 New**：新空白草稿（**Apply** 后才进列表）；**列表右键 → Delete**（或选中后 **Delete**）  
 - 编辑后点 **Apply** 写入当前条目；**Cancel** 放弃本次修改  
 

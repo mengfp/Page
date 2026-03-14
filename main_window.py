@@ -3,7 +3,7 @@ main_window.py - main application window
 
 Layout:
     [Menu Bar]
-    [Left: EntryListPanel | Right: EntryEditorPanel]
+    [Left: EntryListPanel (table) | Right: EntryEditorPanel]
     [Status Bar]
 """
 
@@ -25,6 +25,39 @@ from ui.entry_editor import EntryEditorPanel
 from ui.dialogs import PassphraseDialog, NewPassphraseDialog
 
 FILE_FILTER = "Page Files (*.page);;All Files (*)"
+
+
+def _question_msg(
+    parent,
+    title: str,
+    text: str,
+    *,
+    informative: str = "",
+    primary: str = "Discard",
+    secondary: str = "Cancel",
+) -> bool:
+    """
+    Discard + Cancel (or Delete + Cancel). Returns True if primary was clicked.
+    No Yes/No — buttons are self-explanatory. Default button: Cancel.
+    """
+    m = QMessageBox(parent)
+    m.setWindowTitle(title)
+    m.setText(text)
+    m.setIcon(QMessageBox.Icon.Question)
+    m.setInformativeText(
+        informative
+        or "Changes apply to the open file in memory until you use File → Save."
+    )
+    role = (
+        QMessageBox.ButtonRole.DestructiveRole
+        if primary in ("Discard", "Delete")
+        else QMessageBox.ButtonRole.AcceptRole
+    )
+    b_ok = m.addButton(primary, role)
+    b_cancel = m.addButton(secondary, QMessageBox.ButtonRole.RejectRole)
+    m.setDefaultButton(b_cancel)
+    m.exec()
+    return m.clickedButton() is b_ok
 
 
 class MainWindow(QMainWindow):
@@ -111,7 +144,7 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         self._list_panel = EntryListPanel()
-        self._list_panel.setMinimumWidth(200)
+        self._list_panel.setMinimumWidth(280)
         self._list_panel.entry_selected.connect(self._on_entry_selected)
         self._list_panel.delete_note_requested.connect(self._on_delete_note)
         splitter.addWidget(self._list_panel)
@@ -137,7 +170,10 @@ class MainWindow(QMainWindow):
 
     def _on_new(self):
         try:
-            if not self._confirm_discard():
+            r = self._offer_save_or_discard("Start a new file without saving?")
+            if r == "cancel":
+                return
+            if r == "save" and not self._flush_document():
                 return
             self._app.new()
             self._list_panel.set_store(self._app.store)
@@ -151,7 +187,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
 
     def _on_open(self):
-        if not self._confirm_discard():
+        r = self._offer_save_or_discard("Open another file without saving?")
+        if r == "cancel":
+            return
+        if r == "save" and not self._flush_document():
             return
 
         path, _ = QFileDialog.getOpenFileName(self, "Open File", "", FILE_FILTER)
@@ -178,13 +217,17 @@ class MainWindow(QMainWindow):
         self._status(f"Opened: {path}")
 
     def _on_save(self):
+        """File → Save = apply (buffer) + flush to disk."""
+        if not self._editor_panel.apply_to_store():
+            return
         if self._app.path is None:
-            # New file: ask for path and passphrase
             self._save_new_file()
         else:
             self._do_save()
 
     def _on_save_as(self):
+        if not self._editor_panel.apply_to_store():
+            return
         path, _ = QFileDialog.getSaveFileName(self, "Save As", "", FILE_FILTER)
         if not path:
             return
@@ -206,38 +249,48 @@ class MainWindow(QMainWindow):
         self._update_title()
         self._status(f"Saved as: {path}")
 
-    def _save_new_file(self):
+    def _save_new_file(self) -> bool:
         path, _ = QFileDialog.getSaveFileName(self, "Save File", "", FILE_FILTER)
         if not path:
-            return
+            return False
         if not path.endswith('.page'):
             path += '.page'
 
         dlg = NewPassphraseDialog(self)
         if dlg.exec() != NewPassphraseDialog.DialogCode.Accepted:
-            return
+            return False
 
         try:
             self._app.save_as(path, dlg.passphrase())
         except Exception as e:
             traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Failed to save file:\n{e}")
-            return
+            return False
 
         self._editor_panel.refresh_modified()
         self._update_title()
         self._status(f"Saved: {path}")
+        return True
 
-    def _do_save(self):
+    def _do_save(self) -> bool:
         try:
             self._app.save()
         except Exception as e:
             traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Failed to save:\n{e}")
-            return
+            return False
         self._editor_panel.refresh_modified()
         self._update_title()
         self._status("Saved.")
+        return True
+
+    def _flush_document(self) -> bool:
+        """Apply + write disk (same as File → Save)."""
+        if not self._editor_panel.apply_to_store():
+            return False
+        if self._app.path is None:
+            return self._save_new_file()
+        return self._do_save()
 
     # ------------------------------------------------------------------
     # Entry operations
@@ -254,13 +307,15 @@ class MainWindow(QMainWindow):
                     and not self._editor_panel.pending_add
                     else "Discard current draft and start a new blank draft?"
                 )
-                reply = QMessageBox.question(
+                if not _question_msg(
                     self,
                     "New draft?",
                     msg,
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                )
-                if reply != QMessageBox.StandardButton.Yes:
+                    informative=(
+                        "Cancel keeps the current editor. Discard clears the list selection "
+                        "and opens a blank draft. Nothing is written to disk until File → Save."
+                    ),
+                ):
                     return
             self._list_panel.clear_selection()
             self._editor_panel.reset_to_new_draft()
@@ -278,12 +333,16 @@ class MainWindow(QMainWindow):
 
     def _on_delete_note(self, entry: Entry):
         try:
-            reply = QMessageBox.question(
-                self, "Delete",
-                f"Delete '{entry.title or '(untitled)'}'?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
+            if not _question_msg(
+                self,
+                "Delete",
+                f"Remove '{entry.title or '(untitled)'}' from the list?",
+                primary="Delete",
+                informative=(
+                    "The note is removed from the list in memory. "
+                    "To remove it from the file on disk, choose File → Save afterwards."
+                ),
+            ):
                 return
             self._app.remove_entry(entry)
             self._list_panel.refresh()
@@ -299,13 +358,15 @@ class MainWindow(QMainWindow):
     def _on_entry_selected(self, entry: Entry, previous_row: int):
         try:
             if self._editor_panel.uncommitted_input():
-                reply = QMessageBox.question(
+                if not _question_msg(
                     self,
                     "Discard?",
                     "You have a draft or unapplied edits. Switch entry and lose them?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                )
-                if reply != QMessageBox.StandardButton.Yes:
+                    informative=(
+                        "Cancel keeps the previous list selection. Discard opens the "
+                        "other note and drops edits not yet applied on the current one."
+                    ),
+                ):
                     self._list_panel.set_current_row_silent(previous_row)
                     return
             self._editor_panel.set_entry(entry, pending_add=False)
@@ -341,16 +402,28 @@ class MainWindow(QMainWindow):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _confirm_discard(self) -> bool:
-        """Return True if it is safe to discard current state."""
-        if self._app.dirty or self._editor_panel.uncommitted_input():
-            reply = QMessageBox.question(
-                self, "Unsaved Changes",
-                "You have unsaved changes or a draft not yet applied. Discard?",
-                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-            )
-            return reply == QMessageBox.StandardButton.Discard
-        return True
+    def _offer_save_or_discard(self, detail: str) -> str:
+        """ok | save | discard | cancel — Save = apply + File→Save."""
+        if not self._app.dirty and not self._editor_panel.uncommitted_input():
+            return "ok"
+        m = QMessageBox(self)
+        m.setWindowTitle("Unsaved Changes")
+        m.setIcon(QMessageBox.Icon.Question)
+        m.setText(detail)
+        m.setInformativeText(
+            "Save writes the current editor into the file and flushes to disk. "
+            "Discard continues without saving. Cancel stays here."
+        )
+        b_save = m.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        b_discard = m.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        m.addButton(QMessageBox.StandardButton.Cancel)
+        m.exec()
+        clicked = m.clickedButton()
+        if clicked is b_save:
+            return "save"
+        if clicked is b_discard:
+            return "discard"
+        return "cancel"
 
     def _update_title(self):
         name = os.path.basename(self._app.path) if self._app.path else "Untitled"
@@ -361,7 +434,13 @@ class MainWindow(QMainWindow):
         self._status_bar.showMessage(msg, 5000)
 
     def closeEvent(self, event: QCloseEvent):
-        if self._confirm_discard():
-            event.accept()
-        else:
+        r = self._offer_save_or_discard("Save before closing?")
+        if r == "cancel":
             event.ignore()
+        elif r == "save":
+            if self._flush_document():
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()

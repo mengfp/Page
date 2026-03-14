@@ -1,7 +1,8 @@
 # Page — 设计文档（草案）
 
 > 保密笔记本：本地、口令加密、结构简单。  
-> **本文与实现对齐，讨论、改需求时同步改本文 + 代码。**
+> **本文与实现对齐，讨论、改需求时同步改本文 + 代码。**  
+> 只记**非显然**约定；能从上文直接推出的不重复写（修订表从简，以代码为准）。
 
 ---
 
@@ -32,7 +33,7 @@
 | 项目   | 状态                                                               |
 | ---- | ---------------------------------------------------------------- |
 | 文档   | 新文档：`path = null`，`dirty = false`，`entries = []`。                |
-| 左侧列表 | 空；**无选中**。                                                       |
+| 左侧列表 | 空表（Title / Date / Tags）；**无选中**。                                 |
 | 右侧   | **空白草稿**：新 `Entry` 实例，`pending_add = true`，**Date 栏不显示**（空白）。 |
 | 标题栏  | `Page - Untitled`（无 `*`）。                                        |
 
@@ -69,16 +70,17 @@
 
 ### 5.3 File → Save
 
-- 尚无 path → 等价「首次保存」：路径 + 新口令 → `save_as` → `dirty = false`。
+- **先 Apply（进内存）再写盘**；无单独「只 Flush」。
+- 尚无 path → 路径 + 新口令 → `save_as` → `dirty = false`。
 - 已有 path → `save()` → `dirty = false`。
 
 ### 5.4 File → Save As
 
-路径 + 新口令 → `save_as` → 更新当前 path / 口令 → `dirty = false`。
+同 Save：先 Apply 再选路径 + 口令 → `save_as`。
 
-### 5.5 关闭窗口 / Quit
+### 5.5 关闭 / New / Open（有未保存时）
 
-**确认放弃**（§6）；Discard 才关闭。
+**Save | Discard | Cancel**。Save 等同 File → Save（Apply + 写盘）；Discard 放弃；Cancel 不打断。
 
 ### 5.6 Help → About Page
 
@@ -98,7 +100,7 @@
 
 ### 5.8 左侧列表：选中某条
 
-- 若存在 **非空草稿** 或 **已入库未 Apply**（§6）→ 先问是否放弃再切换；**No** → 保持原选中行、右侧不变。
+- 若存在 **非空草稿** 或 **已入库未 Apply**（§6）→ 先问是否放弃再切换；**Cancel** → 保持原选中行、右侧不变。
 - 否则：右侧加载该条，`pending_add = false`，Date 栏显示。
 
 ### 5.9 Delete（**列表右键 → Delete**；快捷键 **Delete** 删当前选中条）
@@ -110,7 +112,8 @@
 
 ### 5.10 右侧 Apply
 
-1. 表单写入当前 `_entry`，`touch()`，发 `entry_changed(entry, true)`。
+1. **标题必填**（strip 后非空）；否则提示，不写入。
+2. 否则表单写入 `_entry`，`touch()`，发 `entry_changed(entry, true)`（与上次已 Apply 内容无差异时不 `touch`、不 emit，见实现）。
 
 **MainWindow：**
 
@@ -126,23 +129,14 @@
 
 ---
 
-## 6. 何时提示「放弃？」
+## 6. 何时提示 Save / Discard？
 
-在 **File → New / Open**、**关窗口** 前：
-
-- `dirty == true`，或  
-- **非空草稿**，或  
-- **已打开条目且右侧与已 Apply 内容不一致**（未 Apply 的编辑）。
-
-空草稿、未改已打开条目、且未 dirty → 不提示。  
-
-（`uncommitted_input()` 已包含上述后两项逻辑，供 MainWindow 使用。）
+在 **File → New / Open**、**关窗口** 前，若 **dirty** 或 **未 Apply 的编辑**（含非空草稿）→ 三键对话框；否则不提示。
 
 ---
 
 ## 7. 待讨论 / 已知缺口（可打勾迭代）
 
-- Search、New / Apply / Cancel 有 tooltip（Date 只读未加）。
 - （已做）列表切换前已与 §6 一致确认。
 - 文案中英混用是否统一？
 - 是否需要最小自动化测试（哪怕只测 store + 草稿状态机）？
@@ -151,17 +145,8 @@
 
 ## 8. 修订记录
 
-
-| 日期   | 说明                                                         |
-| ---- | ---------------------------------------------------------- |
-| （首版） | 与当前实现对齐。 |
-| 修订   | New draft 理念；**New** 在右侧与 Apply/Cancel 并排；左栏去掉 New 按钮；菜单 **New draft**。 |
-| 修订   | 去掉 **Entry** 菜单；**Delete note** 并入 **File**（仍可用 Delete 键）。 |
-| 修订   | **Delete note** 从 File 移到 **列表右键**；Delete 键保留。 |
-| 修订   | Tags：更小 chip；无 ×；**右键 Delete**；**Tags 行右侧 Add** + 对话框补全。 |
-| 修订   | 左栏 Tags 与 Search 输入区左缘对齐（占位与输入同一基准，show/resize 同步）。 |
-| 修订   | **Help → About Page**；版本号在 `version.py`。 |
-| 修订   | 表单 **Date:**（原 Modified）；数据字段仍为 `modified`。 |
-| 修订   | §1 原则：界面与 developer 命名可不同词。 |
-| 修订   | Search / New / Apply / Cancel tooltip。 |
+| 日期 | 说明 |
+| ---- | ---- |
+| 首版 | 与实现对齐。 |
+| 后序 | 不逐条罗列；以仓库代码与 §5 为准。 |
 

@@ -6,10 +6,10 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
     QPlainTextEdit, QLabel, QFrame, QPushButton,
     QScrollArea, QSizePolicy, QMenu, QDialog, QDialogButtonBox,
-    QCompleter,
+    QCompleter, QMessageBox,
 )
 from PySide6.QtCore import Signal, Slot, Qt, QStringListModel
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QPalette
 
 from store import Entry
 
@@ -145,17 +145,26 @@ class TagChipBar(QWidget):
 
     def _on_new_clicked(self) -> None:
         dlg = QDialog(self)
-        dlg.setWindowTitle("Add tag")
+        dlg.setWindowTitle("Add tags")
+        dlg.setMinimumWidth(520)
+        dlg.setMinimumHeight(140)
         form = QFormLayout(dlg)
         edit = QLineEdit()
         edit.setPlaceholderText("tag or a, b, c")
+        edit.setMinimumWidth(400)
         if self._suggestions:
             c = QCompleter(dlg)
             c.setModel(QStringListModel(self._suggestions))
             c.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
             c.setFilterMode(Qt.MatchFlag.MatchContains)
             edit.setCompleter(c)
-        form.addRow("Tag(s):", edit)
+        form.addRow("Tags:", edit)
+        hint = QLabel(
+            "Separate several tags with commas. Existing tags are suggested while you type."
+        )
+        hint.setWordWrap(True)
+        hint.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+        form.addRow(hint)
         bb = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -225,7 +234,9 @@ class EntryEditorPanel(QWidget):
         self._new_btn.setToolTip("Create a blank draft.")
         self._new_btn.clicked.connect(self.new_draft_requested.emit)
         self._apply_btn = QPushButton("Apply")
-        self._apply_btn.setToolTip("In memory until File → Save.")
+        self._apply_btn.setToolTip(
+            "Save to buffer only. File → Save also flushes to disk."
+        )
         self._apply_btn.clicked.connect(self._on_apply)
         self._cancel_btn = QPushButton("Cancel")
         self._cancel_btn.setToolTip("Revert this form to last Apply.")
@@ -312,15 +323,54 @@ class EntryEditorPanel(QWidget):
         self._apply_btn.setEnabled(enabled)
         self._cancel_btn.setEnabled(enabled)
 
-    @Slot(bool)
-    def _on_apply(self, _checked: bool = False) -> None:
-        self._entry.title = self._title_edit.text()
-        self._entry.tags = self._tag_bar.get_tags()
-        self._entry.content = self._content_edit.toPlainText()
+    def apply_to_store(self, *, show_warning: bool = True) -> bool:
+        """
+        Apply current form into store (buffer only). File → Save also calls this before flush.
+        Returns False if title required but empty.
+        """
+        title = self._title_edit.text()
+        tags = self._tag_bar.get_tags()
+        content = self._content_edit.toPlainText()
+        if self._pending_add:
+            if self._form_empty():
+                return True
+            if not title.strip():
+                if show_warning:
+                    QMessageBox.warning(
+                        self,
+                        "Title required",
+                        "Enter a title before Apply or Save. The title cannot be empty.",
+                    )
+                    self._title_edit.setFocus()
+                return False
+        else:
+            if not title.strip():
+                if show_warning:
+                    QMessageBox.warning(
+                        self,
+                        "Title required",
+                        "Enter a title before Apply or Save. The title cannot be empty.",
+                    )
+                    self._title_edit.setFocus()
+                return False
+            if (
+                title == self._entry.title
+                and tags == self._entry.tags
+                and content == self._entry.content
+            ):
+                return True
+        self._entry.title = title
+        self._entry.tags = tags
+        self._entry.content = content
         self._entry.touch()
         self._pending_add = False
         self.entry_changed.emit(self._entry, True)
         self.refresh_modified()
+        return True
+
+    @Slot(bool)
+    def _on_apply(self, _checked: bool = False) -> None:
+        self.apply_to_store(show_warning=True)
 
     def _on_cancel(self) -> None:
         if self._pending_add:

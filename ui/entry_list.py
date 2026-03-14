@@ -1,9 +1,9 @@
 """
-ui/entry_list.py - left panel: search bar, tag sidebar, entry list
+ui/entry_list.py - left panel: search bar, tag sidebar, entry table (Title | Date | Tags)
 
 Layout:
     [Search bar                    ]
-    [ Tags (label) | Entry list    ]
+    [ Tags (label) | Entry table   ]
     [ tag list     |               ]
 
 Signals:
@@ -11,8 +11,10 @@ Signals:
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QLineEdit, QMenu, QLabel, QStyle, QStyleOptionFrame,
+    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+    QLineEdit, QMenu, QLabel, QStyle, QStyleOptionFrame, QStyledItemDelegate,
+    QStyleOptionViewItem, QAbstractItemView, QHeaderView, QListWidget,
+    QListWidgetItem,
 )
 from PySide6.QtCore import Signal, Qt, QPoint
 from PySide6.QtGui import QFont, QPalette
@@ -20,6 +22,34 @@ from PySide6.QtGui import QFont, QPalette
 from store import Store, Entry
 
 _ALL = "All"
+
+
+class _ElideDelegate(QStyledItemDelegate):
+    """Draw cell text with trailing ellipsis when space is tight."""
+
+    def paint(self, painter, option, index):
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        opt.text = ""
+        style = option.widget.style()
+        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, option.widget)
+        text = index.data(Qt.ItemDataRole.DisplayRole)
+        if not text:
+            return
+        text = str(text)
+        painter.save()
+        painter.setPen(opt.palette.color(opt.palette.ColorRole.Text))
+        painter.setFont(opt.font)
+        rect = opt.rect.adjusted(4, 0, -4, 0)
+        elided = opt.fontMetrics.elidedText(
+            text, Qt.TextElideMode.ElideRight, max(4, rect.width())
+        )
+        painter.drawText(
+            rect,
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            elided,
+        )
+        painter.restore()
 
 
 class EntryListPanel(QWidget):
@@ -63,11 +93,52 @@ class EntryListPanel(QWidget):
         tag_col.addWidget(self._tag_list)
         mid_row.addLayout(tag_col)
 
-        self._entry_list = QListWidget()
-        self._entry_list.currentItemChanged.connect(self._on_selection_changed)
-        self._entry_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._entry_list.customContextMenuRequested.connect(self._on_entry_list_menu)
-        mid_row.addWidget(self._entry_list, 1)
+        self._entry_table = QTableWidget(0, 3)
+        self._entry_table.setHorizontalHeaderLabels(["Title", "Date", "Tags"])
+        # Lighter header; always normal weight (avoid bold on click/focus)
+        self._entry_table.horizontalHeader().setStyleSheet(
+            """
+            QHeaderView::section {
+                background-color: palette(base);
+                color: palette(placeholder-text);
+                font-weight: normal;
+                padding: 4px 6px;
+                border: none;
+                border-bottom: 1px solid palette(midlight);
+            }
+            QHeaderView::section:hover,
+            QHeaderView::section:pressed {
+                background-color: palette(alternate-base);
+                color: palette(placeholder-text);
+                font-weight: normal;
+            }
+            """
+        )
+        self._entry_table.horizontalHeader().setHighlightSections(False)
+        self._entry_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self._entry_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._entry_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
+        )
+        self._entry_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self._entry_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self._entry_table.setShowGrid(True)
+        self._entry_table.verticalHeader().setVisible(False)
+        self._entry_table.setAlternatingRowColors(True)
+        delegate = _ElideDelegate(self._entry_table)
+        self._entry_table.setItemDelegate(delegate)
+        self._entry_table.currentCellChanged.connect(self._on_cell_changed)
+        self._entry_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._entry_table.customContextMenuRequested.connect(self._on_entry_table_menu)
+        mid_row.addWidget(self._entry_table, 1)
 
         layout.addLayout(mid_row, 1)
 
@@ -80,7 +151,6 @@ class EntryListPanel(QWidget):
         self._sync_tags_heading_align()
 
     def _sync_tags_heading_align(self) -> None:
-        """Align Tags with Search line-edit contents (placeholder or typed text)."""
         if not self._search_edit.isVisible():
             return
         opt = QStyleOptionFrame()
@@ -97,58 +167,54 @@ class EntryListPanel(QWidget):
         )
 
     def set_store(self, store: Store) -> None:
-        """Load a new store and refresh the display."""
         self._store = store
         self._search_edit.clear()
         self._refresh_tags()
         self._refresh()
 
     def refresh(self) -> None:
-        """Call after store contents change (e.g. entry added/removed)."""
         self._refresh_tags()
         self._refresh_entries(preserve_selection=True)
 
     def select_entry(self, entry: Entry) -> None:
-        """Programmatically select an entry in the list."""
         for i, e in enumerate(self._displayed):
             if e is entry:
-                self._entry_list.blockSignals(True)
-                self._entry_list.setCurrentRow(i)
-                self._entry_list.blockSignals(False)
+                self._entry_table.blockSignals(True)
+                self._entry_table.selectRow(i)
+                self._entry_table.blockSignals(False)
                 return
 
     def current_entry(self) -> Entry | None:
-        row = self._entry_list.currentRow()
+        row = self._entry_table.currentRow()
         if 0 <= row < len(self._displayed):
             return self._displayed[row]
         return None
 
     def clear_selection(self) -> None:
-        """Clear list selection (e.g. when starting a draft new entry)."""
-        self._entry_list.blockSignals(True)
-        self._entry_list.clearSelection()
-        self._entry_list.setCurrentRow(-1)
-        self._entry_list.blockSignals(False)
+        self._entry_table.blockSignals(True)
+        self._entry_table.clearSelection()
+        self._entry_table.setCurrentCell(-1, 0)
+        self._entry_table.blockSignals(False)
 
     def set_current_row_silent(self, row: int) -> None:
-        """Restore list selection without emitting entry_selected."""
-        self._entry_list.blockSignals(True)
+        self._entry_table.blockSignals(True)
         if row < 0:
-            self._entry_list.clearSelection()
-            self._entry_list.setCurrentRow(-1)
+            self._entry_table.clearSelection()
+            self._entry_table.setCurrentCell(-1, 0)
         else:
-            self._entry_list.setCurrentRow(row)
-        self._entry_list.blockSignals(False)
+            self._entry_table.selectRow(row)
+        self._entry_table.blockSignals(False)
 
-    def _on_entry_list_menu(self, pos) -> None:
-        row = self._entry_list.row(self._entry_list.itemAt(pos))
+    def _on_entry_table_menu(self, pos) -> None:
+        idx = self._entry_table.indexAt(pos)
+        row = idx.row()
         if row < 0 or row >= len(self._displayed):
             return
         entry = self._displayed[row]
         menu = QMenu(self)
         act = menu.addAction("Delete")
         act.triggered.connect(lambda: self.delete_note_requested.emit(entry))
-        menu.exec(self._entry_list.mapToGlobal(pos))
+        menu.exec(self._entry_table.viewport().mapToGlobal(pos))
 
     def _current_tag(self) -> str:
         item = self._tag_list.currentItem()
@@ -158,7 +224,6 @@ class EntryListPanel(QWidget):
         if self._store is None:
             return
         current_tag = self._current_tag()
-
         self._tag_list.blockSignals(True)
         self._tag_list.clear()
         all_item = QListWidgetItem(_ALL)
@@ -169,7 +234,6 @@ class EntryListPanel(QWidget):
         self._tag_list.addItem(all_item)
         for tag in self._store.all_tags():
             self._tag_list.addItem(tag)
-
         items = self._tag_list.findItems(current_tag, Qt.MatchFlag.MatchExactly)
         if items:
             self._tag_list.setCurrentItem(items[0])
@@ -180,40 +244,57 @@ class EntryListPanel(QWidget):
     def _refresh(self) -> None:
         self._refresh_entries(preserve_selection=False)
 
+    def _entry_tags_text(self, entry: Entry) -> str:
+        return ", ".join(entry.tags) if entry.tags else ""
+
+    def _row_tooltip(self, entry: Entry) -> str:
+        title = entry.title or "(untitled)"
+        when = entry.modified.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        tags = self._entry_tags_text(entry) or "—"
+        return f"{title}\n{when}\n{tags}"
+
     def _refresh_entries(self, preserve_selection: bool) -> None:
         if self._store is None:
-            self._entry_list.clear()
+            self._entry_table.setRowCount(0)
             self._displayed = []
             return
 
         keyword = self._search_edit.text().strip()
         tag = self._current_tag()
-
         entries = self._store.search(keyword) if keyword else list(self._store.entries)
-
         if tag and tag != _ALL:
             entries = [e for e in entries if tag in e.tags]
-
         entries = self._store.sorted_by_modified(entries)
-
         current = self.current_entry() if preserve_selection else None
 
         self._displayed = entries
-        self._entry_list.blockSignals(True)
-        self._entry_list.clear()
-        for entry in entries:
-            text = entry.title if entry.title else "(untitled)"
-            item = QListWidgetItem(text)
-            item.setToolTip(entry.modified.astimezone().strftime('%Y-%m-%d %H:%M:%S'))
-            self._entry_list.addItem(item)
-        self._entry_list.blockSignals(False)
+        self._entry_table.blockSignals(True)
+        self._entry_table.setRowCount(len(entries))
+        for row, entry in enumerate(entries):
+            title = entry.title if entry.title else "(untitled)"
+            when = entry.modified.astimezone().strftime("%Y-%m-%d %H:%M")
+            tags = self._entry_tags_text(entry)
+            tip = self._row_tooltip(entry)
+            it0 = QTableWidgetItem(title)
+            it0.setToolTip(tip)
+            it1 = QTableWidgetItem(when)
+            it1.setToolTip(tip)
+            it2 = QTableWidgetItem(tags)
+            it2.setToolTip(tip)
+            self._entry_table.setItem(row, 0, it0)
+            self._entry_table.setItem(row, 1, it1)
+            self._entry_table.setItem(row, 2, it2)
+        self._entry_table.blockSignals(False)
 
         if current is not None:
             self.select_entry(current)
 
-    def _on_selection_changed(self, current: QListWidgetItem, previous: QListWidgetItem) -> None:
-        entry = self.current_entry()
-        if entry is None:
+    def _on_cell_changed(
+        self, cur_row: int, _cur_col: int, prev_row: int, _prev_col: int
+    ) -> None:
+        if cur_row < 0 or cur_row >= len(self._displayed):
             return
-        prev_row = self._entry_list.row(previous) if previous is not None else -1
-        self.entry_selected.emit(entry, prev_row)
+        entry = self._displayed[cur_row]
+        if cur_row == prev_row and prev_row >= 0:
+            return
+        self.entry_selected.emit(entry, prev_row if prev_row >= 0 else -1)

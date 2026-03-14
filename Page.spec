@@ -69,6 +69,7 @@ for _age in ("age.exe", "age-plugin-batchpass.exe"):
     _dst = os.path.join(_app_root, _age)
     if not os.path.isfile(_src):
         raise SystemExit(
-            "Page.spec: 项目根目录缺少 %s，请放在与 Page.spec 同级后再 pyinstaller" % _age
+            "Page.spec: missing %s next to Page.spec (project root); add it, then run pyinstaller."
+            % _age
         )
     shutil.copy2(_src, _dst)

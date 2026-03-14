@@ -13,6 +13,18 @@ from crypto import encrypt, decrypt
 from store import Store, Entry
 
 
+class OpenPassphraseError(Exception):
+    """Decrypt failed (wrong passphrase)."""
+
+    pass
+
+
+class OpenFormatError(Exception):
+    """Unreadable path, or decrypted payload not a valid Page document."""
+
+    pass
+
+
 class App:
     def __init__(self):
         self._store: Store = Store()
@@ -57,17 +69,23 @@ class App:
     def open(self, path: str, passphrase: str) -> None:
         """
         Open and decrypt an existing .page file.
-        Raises RuntimeError on wrong passphrase or corrupt file.
+        Raises OpenPassphraseError if decrypt fails; OpenFormatError if read/parse fails.
         """
         try:
-            with open(path, 'r', encoding='ascii') as f:
+            with open(path, "r", encoding="ascii") as f:
                 armor_text = f.read()
         except OSError as e:
-            raise RuntimeError(f"Cannot read file: {e}") from e
+            raise OpenFormatError() from e
 
-        # Decrypt and deserialize (RuntimeError propagates to caller)
-        raw = decrypt(armor_text, passphrase)
-        store = Store.from_bytes(raw)
+        try:
+            raw = decrypt(armor_text, passphrase)
+        except RuntimeError:
+            raise OpenPassphraseError() from None
+
+        try:
+            store = Store.from_bytes(raw)
+        except RuntimeError:
+            raise OpenFormatError() from None
 
         # Commit state only after successful open
         self._store = store

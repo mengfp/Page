@@ -11,13 +11,16 @@ import os
 import traceback
 
 from PySide6.QtWidgets import (
-    QMainWindow, QSplitter, QFileDialog,
-    QMessageBox, QStatusBar,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QSplitter,
+    QStatusBar,
 )
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence, QCloseEvent
 
-from app import App
+from app import App, OpenFormatError, OpenPassphraseError
 from store import Entry
 from version import APP_NAME, __version__
 from ui.entry_list import EntryListPanel
@@ -233,8 +236,21 @@ class MainWindow(QMainWindow):
 
         try:
             self._app.open(path, dlg.passphrase())
-        except Exception as e:
-            self._report_error(e, "Failed to open file")
+        except OpenPassphraseError:
+            QMessageBox.critical(
+                self,
+                "Open File",
+                "Wrong passphrase.\n\n"
+                "Check Caps Lock, try again, or make sure this is the file you meant to open.",
+            )
+            return False
+        except OpenFormatError:
+            QMessageBox.critical(
+                self,
+                "Open File",
+                "Invalid format.\n\n"
+                "This file is not a valid Page notebook, or it may be damaged.",
+            )
             return False
 
         self._list_panel.set_store(self._app.store)

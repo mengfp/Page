@@ -3,12 +3,22 @@ ui/entry_editor.py - right panel: title, tags (chips + Add), content, New/Apply/
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
-    QPlainTextEdit, QLabel, QFrame, QPushButton,
-    QScrollArea, QSizePolicy, QMenu, QDialog, QDialogButtonBox,
-    QCompleter, QMessageBox,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFormLayout,
+    QLineEdit,
+    QPlainTextEdit,
+    QLabel,
+    QFrame,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QMenu,
+    QMessageBox,
+    QComboBox,
 )
-from PySide6.QtCore import Signal, Slot, Qt, QStringListModel
+from PySide6.QtCore import Signal, Slot, Qt
 from PySide6.QtGui import QFont, QPalette
 
 from store import Entry
@@ -23,6 +33,7 @@ _CHIP_STYLE = """
     padding: 0px 5px;
 }
 """
+
 
 # Tags row: no white panel — match window background
 _TAG_ROW_QSS = """
@@ -72,17 +83,29 @@ class TagChipBar(QWidget):
         self._scroll.setWidget(self._chips_inner)
         row.addWidget(self._scroll, 1)
 
+        self._tag_combo = QComboBox()
+        self._tag_combo.setEditable(True)
+        self._tag_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self._tag_combo.setMinimumWidth(140)
+        self._tag_combo.setMaximumWidth(220)
+        self._tag_combo.setFixedHeight(self._tag_row_h)
+        self._tag_combo.lineEdit().setPlaceholderText("Tag…")
+        self._tag_combo.setToolTip("Type a tag or pick from the list, then Add.")
+
         self._add_tag_btn = QPushButton("Add")
         self._add_tag_btn.setFlat(True)
         self._add_tag_btn.setFixedHeight(self._tag_row_h)
-        self._add_tag_btn.setToolTip(
-            "Add tags separated by commas. Suggestions as you type."
-        )
-        self._add_tag_btn.clicked.connect(self._on_new_clicked)
+        self._add_tag_btn.setToolTip("Add the tag from the box.")
+        self._add_tag_btn.clicked.connect(self._do_add_tag)
+        self._tag_combo.lineEdit().returnPressed.connect(self._do_add_tag)
+
+        row.addWidget(self._tag_combo, 0)
         row.addWidget(self._add_tag_btn)
+        self._refill_tag_combo()
 
     def set_available_tags(self, names: list[str]) -> None:
         self._suggestions = sorted(set(names))
+        self._refill_tag_combo()
 
     def get_tags(self) -> list[str]:
         return list(self._tags)
@@ -94,6 +117,7 @@ class TagChipBar(QWidget):
             if t and t not in self._tags:
                 self._tags.append(t)
                 self._add_chip(t)
+        self._refill_tag_combo()
 
     def clear(self) -> None:
         while self._chips_layout.count() > 1:
@@ -102,9 +126,31 @@ class TagChipBar(QWidget):
                 item.widget().deleteLater()
         self._tags.clear()
         self._resize_chips_inner()
+        self._refill_tag_combo()
 
     def has_any_tag_or_input(self) -> bool:
-        return bool(self._tags)
+        if self._tags:
+            return True
+        return bool(self._tag_combo.currentText().strip())
+
+    def _available_for_combo(self) -> list[str]:
+        return sorted(t for t in set(self._suggestions) if t and t not in self._tags)
+
+    def _refill_tag_combo(self) -> None:
+        self._tag_combo.blockSignals(True)
+        self._tag_combo.clear()
+        for t in self._available_for_combo():
+            self._tag_combo.addItem(t)
+        self._tag_combo.setEditText("")
+        self._tag_combo.blockSignals(False)
+
+    def _do_add_tag(self) -> None:
+        tag = self._tag_combo.currentText().strip()
+        if not tag or tag in self._tags:
+            return
+        self._tags.append(tag)
+        self._add_chip(tag)
+        self._refill_tag_combo()
 
     def commit_pending_input(self) -> None:
         pass
@@ -149,50 +195,12 @@ class TagChipBar(QWidget):
             self._tags.remove(text)
         chip.deleteLater()
         self._resize_chips_inner()
-
-    def _on_new_clicked(self) -> None:
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Add tags")
-        dlg.setMinimumWidth(520)
-        dlg.setMinimumHeight(140)
-        form = QFormLayout(dlg)
-        edit = QLineEdit()
-        edit.setPlaceholderText("tag or a, b, c")
-        edit.setMinimumWidth(400)
-        if self._suggestions:
-            c = QCompleter(dlg)
-            c.setModel(QStringListModel(self._suggestions))
-            c.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            c.setFilterMode(Qt.MatchFlag.MatchContains)
-            edit.setCompleter(c)
-        form.addRow("Tags:", edit)
-        hint = QLabel(
-            "Separate several tags with commas. Existing tags are suggested while you type."
-        )
-        hint.setWordWrap(True)
-        hint.setForegroundRole(QPalette.ColorRole.PlaceholderText)
-        form.addRow(hint)
-        bb = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        bb.accepted.connect(dlg.accept)
-        bb.rejected.connect(dlg.reject)
-        form.addRow(bb)
-        edit.setFocus()
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-        raw = edit.text().strip()
-        if not raw:
-            return
-        for p in raw.replace("，", ",").split(","):
-            p = p.strip()
-            if p and p not in self._tags:
-                self._tags.append(p)
-                self._add_chip(p)
+        self._refill_tag_combo()
 
     def setEnabled(self, enabled: bool) -> None:
         super().setEnabled(enabled)
         self._add_tag_btn.setEnabled(enabled)
+        self._tag_combo.setEnabled(enabled)
 
 
 class EntryEditorPanel(QWidget):

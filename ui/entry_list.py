@@ -1,10 +1,9 @@
 """
-ui/entry_list.py - left panel: search bar, tag sidebar, entry table (Title | Date | Tags)
+ui/entry_list.py - left panel: search bar, filters + entry table (Title | Date | Tags)
 
 Layout:
     [Search bar                    ]
-    [ Tags (label) | Entry table   ]
-    [ tag list     |               ]
+    [ filter sidebar | gap | table Title | Date | Tags ]
 
 Signals:
     entry_selected(Entry, int) — (entry, previous_row); previous_row -1 if none
@@ -14,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QLineEdit, QMenu, QLabel, QStyle, QStyleOptionFrame, QStyledItemDelegate,
     QStyleOptionViewItem, QAbstractItemView, QHeaderView, QListWidget,
-    QListWidgetItem,
+    QListWidgetItem, QFrame,
 )
 from PySide6.QtCore import Signal, Qt, QPoint
 from PySide6.QtGui import QFont, QPalette
@@ -22,6 +21,11 @@ from PySide6.QtGui import QFont, QPalette
 from store import Store, Entry
 
 _ALL = "All"
+
+# 只读区统一浅灰（比 #e4e4e4 亮，接近 Win 窗口底，避免发闷）
+_READONLY_BG = "#f0f0f0"
+_READONLY_BORDER = "#d4d4d4"
+_READONLY_HEADER_HOVER = "#e8e8e8"
 
 
 class _ElideDelegate(QStyledItemDelegate):
@@ -62,10 +66,21 @@ class EntryListPanel(QWidget):
         self._displayed: list[Entry] = []
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        # 左侧多留空，Search 不要紧贴窗口边
+        layout.setContentsMargins(8, 4, 4, 4)
         layout.setSpacing(4)
+        self.setStyleSheet(
+            f"""
+            EntryListPanel {{ background-color: {_READONLY_BG}; }}
+            QLineEdit#entryListSearch {{
+                background-color: #ffffff;
+                border: 1px solid {_READONLY_BORDER};
+            }}
+            """
+        )
 
         self._search_edit = QLineEdit()
+        self._search_edit.setObjectName("entryListSearch")
         self._search_edit.setPlaceholderText("Search...")
         self._search_edit.setToolTip(
             "Filter by title, body and tags. Combine with the tag list on the left."
@@ -74,55 +89,104 @@ class EntryListPanel(QWidget):
         layout.addWidget(self._search_edit)
 
         mid_row = QHBoxLayout()
-        mid_row.setSpacing(4)
-
-        tag_col = QVBoxLayout()
-        tag_col.setSpacing(2)
-        tag_col.setContentsMargins(0, 0, 0, 0)
-        self._tags_heading = QLabel("Tags")
-        self._tags_heading.setFixedWidth(100)
-        self._tags_heading.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        self._tags_heading.setForegroundRole(QPalette.ColorRole.PlaceholderText)
-        self._tags_heading.setMargin(0)
-        tag_col.addWidget(self._tags_heading)
-        self._tag_list = QListWidget()
-        self._tag_list.setFixedWidth(100)
-        self._tag_list.currentItemChanged.connect(self._refresh)
-        tag_col.addWidget(self._tag_list)
-        mid_row.addLayout(tag_col)
+        mid_row.setSpacing(0)
+        mid_row.setContentsMargins(0, 0, 0, 0)
 
         self._entry_table = QTableWidget(0, 3)
         self._entry_table.setHorizontalHeaderLabels(["Title", "Date", "Tags"])
-        # Lighter header; always normal weight (avoid bold on click/focus)
-        self._entry_table.horizontalHeader().setStyleSheet(
+        self._entry_table.setMinimumWidth(360)
+        hdr = self._entry_table.horizontalHeader()
+        _hdr_h = max(28, hdr.sizeHint().height())
+
+        # 侧栏：与右侧数据表区分开（不同底 + 右边框 + 圆角），避免像同一表格的 4 列
+        self._filter_sidebar = QFrame()
+        self._filter_sidebar.setObjectName("filterSidebar")
+        self._filter_sidebar.setStyleSheet(
+            f"""
+            QFrame#filterSidebar {{
+                background-color: {_READONLY_BG};
+                border: 1px solid {_READONLY_BORDER};
+                border-right: 2px solid {_READONLY_BORDER};
+                border-radius: 8px 0 0 8px;
+            }}
             """
-            QHeaderView::section {
-                background-color: palette(base);
-                color: palette(placeholder-text);
-                font-weight: normal;
-                padding: 4px 6px;
+        )
+        _side_inner_w = 112
+        self._filter_sidebar.setFixedWidth(_side_inner_w + 16)
+        side_lay = QVBoxLayout(self._filter_sidebar)
+        side_lay.setContentsMargins(8, 0, 10, 0)
+        side_lay.setSpacing(0)
+
+        _header_bar_ss = """
+            QWidget#filtersHeaderBand {
+                background-color: transparent;
                 border: none;
                 border-bottom: 1px solid palette(midlight);
             }
-            QHeaderView::section:hover,
-            QHeaderView::section:pressed {
-                background-color: palette(alternate-base);
-                color: palette(placeholder-text);
-                font-weight: normal;
+            QLabel#filtersHeaderLabel {
+                background-color: transparent;
+                color: palette(window-text);
+                font-weight: 600;
+                font-size: 11px;
+                padding: 6px 4px 6px 2px;
             }
+        """
+        self._filters_header_band = QFrame()
+        self._filters_header_band.setObjectName("filtersHeaderBand")
+        self._filters_header_band.setFixedHeight(_hdr_h)
+        self._filters_header_band.setStyleSheet(_header_bar_ss)
+        self._filters_heading = QLabel("Filters")
+        self._filters_heading.setObjectName("filtersHeaderLabel")
+        self._filters_heading.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        hb_l = QVBoxLayout(self._filters_header_band)
+        hb_l.setContentsMargins(0, 0, 0, 0)
+        hb_l.addWidget(self._filters_heading)
+        side_lay.addWidget(self._filters_header_band)
+
+        self._tag_list = QListWidget()
+        self._tag_list.setFixedWidth(_side_inner_w)
+        self._tag_list.setFrameShape(QFrame.Shape.NoFrame)
+        self._tag_list.currentItemChanged.connect(self._refresh)
+        side_lay.addWidget(self._tag_list, 1)
+        mid_row.addWidget(self._filter_sidebar)
+        mid_row.addSpacing(10)
+
+        hdr.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        hdr.setStyleSheet(
+            f"""
+            QHeaderView {{
+                background-color: {_READONLY_BG};
+            }}
+            QHeaderView::section {{
+                background-color: {_READONLY_BG};
+                color: #606060;
+                font-weight: normal;
+                padding: 4px 6px;
+                border: none;
+                border-bottom: 1px solid {_READONLY_BORDER};
+                border-left: 1px solid {_READONLY_BORDER};
+            }}
+            QHeaderView::section:first {{
+                border-left: none;
+            }}
+            QHeaderView::section:hover,
+            QHeaderView::section:pressed {{
+                background-color: {_READONLY_HEADER_HOVER};
+                color: #303030;
+            }}
             """
         )
-        self._entry_table.horizontalHeader().setHighlightSections(False)
-        self._entry_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
-        )
-        self._entry_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents
-        )
-        self._entry_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeMode.Stretch
+        hdr.setFixedHeight(_hdr_h)
+        hdr.setHighlightSections(False)
+        hdr.setMinimumSectionSize(64)
+        # 必须全部 Interactive 才能拖列宽；Stretch 列在 Qt 里不能手工调
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        self._entry_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
         )
         self._entry_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -132,7 +196,46 @@ class EntryListPanel(QWidget):
         )
         self._entry_table.setShowGrid(True)
         self._entry_table.verticalHeader().setVisible(False)
-        self._entry_table.setAlternatingRowColors(True)
+        # 只读列表：整表统一灰底，不再白/灰交替
+        self._entry_table.setAlternatingRowColors(False)
+        self._entry_table.setStyleSheet(
+            f"""
+            QTableWidget {{
+                background-color: {_READONLY_BG};
+                gridline-color: {_READONLY_BORDER};
+                border: 1px solid {_READONLY_BORDER};
+                border-radius: 0 6px 6px 0;
+            }}
+            QTableWidget::item {{
+                background-color: {_READONLY_BG};
+            }}
+            QTableWidget::item:selected, QTableWidget::item:selected:active {{
+                background-color: #c5ddf5;
+                color: palette(text);
+            }}
+            QTableWidget::item:selected:!active {{
+                background-color: #d6e8f9;
+                color: palette(text);
+            }}
+            """
+        )
+        self._tag_list.setStyleSheet(
+            """
+            QListWidget {
+                background-color: transparent;
+                border: none;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 4px 2px;
+                border-radius: 4px;
+            }
+            QListWidget::item:selected {
+                background-color: #b8d4f0;
+                color: palette(text);
+            }
+            """
+        )
         delegate = _ElideDelegate(self._entry_table)
         self._entry_table.setItemDelegate(delegate)
         self._entry_table.currentCellChanged.connect(self._on_cell_changed)
@@ -159,12 +262,19 @@ class EntryListPanel(QWidget):
             QStyle.SubElement.SE_LineEditContents, opt, self._search_edit
         )
         target_x = self._search_edit.mapTo(self, cr.topLeft()).x()
-        heading_left = self._tags_heading.mapTo(self, QPoint(0, 0)).x()
+        heading_left = self._filters_heading.mapTo(self, QPoint(0, 0)).x()
         delta = target_x - heading_left
-        self._tags_heading.setContentsMargins(max(0, delta), 0, 0, 0)
-        self._tags_heading.setStyleSheet(
-            f"margin-left: {delta}px;" if delta < 0 else ""
-        )
+        self._filters_heading.setContentsMargins(max(0, delta), 0, 0, 0)
+        if delta < 0:
+            self._filters_heading.setStyleSheet(
+                "margin-left: %dpx; background: transparent; color: palette(placeholder-text);"
+                " font-weight: normal; padding: 4px 6px;" % delta
+            )
+        else:
+            self._filters_heading.setStyleSheet(
+                "background: transparent; color: palette(placeholder-text);"
+                " font-weight: normal; padding: 4px 6px;"
+            )
 
     def set_store(self, store: Store) -> None:
         self._store = store
@@ -244,6 +354,41 @@ class EntryListPanel(QWidget):
     def _refresh(self) -> None:
         self._refresh_entries(preserve_selection=False)
 
+    def _apply_entry_table_column_widths(self) -> None:
+        """
+        按内容算初始列宽；三列均 Interactive，表头分割线可拖。
+         viewport 比列宽总和多时，余量分给 Title / Tags，避免右侧空一条。
+        """
+        hdr = self._entry_table.horizontalHeader()
+        fm = self._entry_table.fontMetrics()
+        pad = 28  # 表头 padding + 余量
+
+        def text_w(s: str) -> int:
+            return fm.horizontalAdvance(s) + pad
+
+        headers = ("Title", "Date", "Tags")
+        mins = (120, 140, 72)
+        maxs = (560, 200, 420)
+
+        widths = [text_w(headers[c]) for c in range(3)]
+        for col in range(3):
+            for row in range(self._entry_table.rowCount()):
+                it = self._entry_table.item(row, col)
+                if it and it.text():
+                    widths[col] = max(widths[col], text_w(it.text()))
+            widths[col] = max(mins[col], min(maxs[col], widths[col]))
+
+        vp = max(0, self._entry_table.viewport().width() - 4)
+        total = sum(widths)
+        if vp > total:
+            extra = vp - total
+            widths[0] += (extra * 2) // 3
+            widths[2] += extra - (extra * 2) // 3
+
+        for c in range(3):
+            hdr.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
+            self._entry_table.setColumnWidth(c, widths[c])
+
     def _entry_tags_text(self, entry: Entry) -> str:
         return ", ".join(entry.tags) if entry.tags else ""
 
@@ -275,16 +420,22 @@ class EntryListPanel(QWidget):
             when = entry.modified.astimezone().strftime("%Y-%m-%d %H:%M")
             tags = self._entry_tags_text(entry)
             tip = self._row_tooltip(entry)
+            _ro = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
             it0 = QTableWidgetItem(title)
+            it0.setFlags(_ro)
             it0.setToolTip(tip)
             it1 = QTableWidgetItem(when)
+            it1.setFlags(_ro)
             it1.setToolTip(tip)
             it2 = QTableWidgetItem(tags)
+            it2.setFlags(_ro)
             it2.setToolTip(tip)
             self._entry_table.setItem(row, 0, it0)
             self._entry_table.setItem(row, 1, it1)
             self._entry_table.setItem(row, 2, it2)
         self._entry_table.blockSignals(False)
+
+        self._apply_entry_table_column_widths()
 
         if current is not None:
             self.select_entry(current)

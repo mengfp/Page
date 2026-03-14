@@ -65,11 +65,21 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._app = App()
         self.setWindowTitle("Page")
-        self.resize(900, 600)
+        # 28" 显示器上更舒适的首屏，仍不占满
+        self.resize(1280, 780)
 
         self._build_menu()
         self._build_ui()
         self._build_status_bar()
+        # 只读区统一灰底；可编辑控件在各自 panel 内单独白底
+        self.setStyleSheet(
+            """
+            QMainWindow { background-color: #f0f0f0; }
+            QSplitter::handle { background-color: #d4d4d4; }
+            QMenuBar { background-color: #f0f0f0; }
+            QStatusBar { background-color: #f0f0f0; }
+            """
+        )
         # Same Store as App — list panel must not stay _store=None until File>New
         self._list_panel.set_store(self._app.store)
         self._list_panel.clear_selection()
@@ -144,7 +154,8 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         self._list_panel = EntryListPanel()
-        self._list_panel.setMinimumWidth(280)
+        # Tag column 100px + table needs room; 280 was too narrow (columns crushed)
+        self._list_panel.setMinimumWidth(520)
         self._list_panel.entry_selected.connect(self._on_entry_selected)
         self._list_panel.delete_note_requested.connect(self._on_delete_note)
         splitter.addWidget(self._list_panel)
@@ -155,8 +166,10 @@ class MainWindow(QMainWindow):
         self._editor_panel.pending_entry_discarded.connect(self._on_pending_entry_discarded)
         self._editor_panel.new_draft_requested.connect(self._on_new_draft)
 
-        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 3)
+        # Sensible first paint (was ~225px left @ 900px window with 1:3)
+        splitter.setSizes([520, 740])
 
         self.setCentralWidget(splitter)
 

@@ -40,9 +40,13 @@ class TagChipBar(QWidget):
         self._tags: list[str] = []
         self._suggestions: list[str] = []
 
+        # 与表单行高对齐，避免 chip 视觉上偏上、和 "Tags:" 不齐
+        self._tag_row_h = 28
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(6)
+        row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self.setMinimumHeight(self._tag_row_h)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(False)
@@ -51,15 +55,17 @@ class TagChipBar(QWidget):
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setStyleSheet(_TAG_ROW_QSS)
         self._scroll.viewport().setAutoFillBackground(False)
-        self._scroll.setFixedHeight(self._CHIP_H + 6)
+        self._scroll.setFixedHeight(self._tag_row_h)
         self._scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         self._chips_inner = QWidget()
         self._chips_inner.setAutoFillBackground(False)
         self._chips_inner.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self._chips_inner.setFixedHeight(self._CHIP_H)
+        self._chips_inner.setFixedHeight(self._tag_row_h)
         self._chips_layout = QHBoxLayout(self._chips_inner)
-        self._chips_layout.setContentsMargins(2, 0, 2, 0)
+        _pad_v = max(0, (self._tag_row_h - self._CHIP_H) // 2)
+        self._chips_layout.setContentsMargins(2, _pad_v, 2, _pad_v)
+        self._chips_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self._chips_layout.setSpacing(4)
         self._chips_layout.addStretch()
         self._scroll.setWidget(self._chips_inner)
@@ -67,7 +73,7 @@ class TagChipBar(QWidget):
 
         self._add_tag_btn = QPushButton("Add")
         self._add_tag_btn.setFlat(True)
-        self._add_tag_btn.setFixedHeight(self._CHIP_H + 6)
+        self._add_tag_btn.setFixedHeight(self._tag_row_h)
         self._add_tag_btn.setToolTip(
             "Add tags separated by commas. Suggestions as you type."
         )
@@ -109,7 +115,7 @@ class TagChipBar(QWidget):
             if it.widget():
                 w += it.widget().sizeHint().width() + 4
         self._chips_inner.setMinimumWidth(max(w, 40))
-        self._chips_inner.resize(max(w, 40), self._CHIP_H)
+        self._chips_inner.resize(max(w, 40), self._tag_row_h)
 
     def _add_chip(self, text: str) -> None:
         chip = QFrame()
@@ -201,11 +207,31 @@ class EntryEditorPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
+        _ro = "#f0f0f0"
+        _bd = "#d4d4d4"
+        self.setStyleSheet(
+            f"""
+            EntryEditorPanel {{ background-color: {_ro}; }}
+            QLineEdit#editorTitle, QPlainTextEdit#editorContent {{
+                background-color: #ffffff;
+                border: 1px solid {_bd};
+                color: #202020;
+            }}
+            QLineEdit#editorDateReadonly,
+            QLineEdit#editorDateReadonly:read-only {{
+                background-color: {_ro};
+                color: #303030;
+                border: none;
+                padding-left: 0;
+            }}
+            """
+        )
 
         form = QFormLayout()
         form.setHorizontalSpacing(20)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._title_edit = QLineEdit()
+        self._title_edit.setObjectName("editorTitle")
         self._title_edit.setPlaceholderText("Title")
         form.addRow("Title:", self._title_edit)
 
@@ -213,9 +239,12 @@ class EntryEditorPanel(QWidget):
         form.addRow("Tags:", self._tag_bar)
 
         self._modified_edit = QLineEdit()
+        self._modified_edit.setObjectName("editorDateReadonly")
         self._modified_edit.setReadOnly(True)
         self._modified_edit.setPlaceholderText("")
         self._modified_edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._modified_edit.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._modified_edit.setFrame(False)
         form.addRow("Date:", self._modified_edit)
         layout.addLayout(form)
 
@@ -225,6 +254,7 @@ class EntryEditorPanel(QWidget):
         layout.addWidget(line)
 
         self._content_edit = QPlainTextEdit()
+        self._content_edit.setObjectName("editorContent")
         self._content_edit.setPlaceholderText("Content...")
         layout.addWidget(self._content_edit, 1)
 

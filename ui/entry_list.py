@@ -453,6 +453,11 @@ class EntryListPanel(QWidget):
 
         self._displayed = entries
         self._entry_table.blockSignals(True)
+        # Clear selection before repopulating so we never keep an old row index
+        # that now points at a different entry (e.g. after tag filter) — otherwise
+        # clicking that row gives cur_row == prev_row and the editor never updates.
+        self._entry_table.clearSelection()
+        self._entry_table.setCurrentCell(-1, 0)
         self._entry_table.setRowCount(len(entries))
         for row, entry in enumerate(entries):
             title = entry.title if entry.title else "(untitled)"
@@ -476,8 +481,12 @@ class EntryListPanel(QWidget):
 
         self._apply_entry_table_column_widths()
 
-        if current is not None:
+        if current is not None and any(e is current for e in entries):
             self.select_entry(current)
+        else:
+            # Was selected entry filtered out — leave no selection until user picks a row
+            self._entry_table.clearSelection()
+            self._entry_table.setCurrentCell(-1, 0)
 
     def _on_cell_changed(
         self, cur_row: int, _cur_col: int, prev_row: int, _prev_col: int
@@ -485,6 +494,13 @@ class EntryListPanel(QWidget):
         if cur_row < 0 or cur_row >= len(self._displayed):
             return
         entry = self._displayed[cur_row]
-        if cur_row == prev_row and prev_row >= 0:
+        prev_entry = (
+            self._displayed[prev_row]
+            if 0 <= prev_row < len(self._displayed)
+            else None
+        )
+        # Same row index can still be a different note after table refresh; always
+        # emit when the entry at prev_row (if any) is not the one we are on now.
+        if prev_entry is not None and prev_entry is entry:
             return
         self.entry_selected.emit(entry, prev_row if prev_row >= 0 else -1)

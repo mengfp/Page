@@ -64,6 +64,9 @@ class EntryListPanel(QWidget):
         super().__init__(parent)
         self._store: Store | None = None
         self._displayed: list[Entry] = []
+        # 排序：仅 Title(0)、Date(1)；Tags(2) 不排序。默认 Date 降序（新在前）
+        self._sort_col = 1
+        self._sort_asc = False
 
         layout = QVBoxLayout(self)
         # 左侧多留空，Search 不要紧贴窗口边
@@ -93,7 +96,7 @@ class EntryListPanel(QWidget):
         mid_row.setContentsMargins(0, 0, 0, 0)
 
         self._entry_table = QTableWidget(0, 3)
-        self._entry_table.setHorizontalHeaderLabels(["Title", "Date", "Tags"])
+        self._entry_sort_header_labels()
         self._entry_table.setMinimumWidth(360)
         hdr = self._entry_table.horizontalHeader()
         _hdr_h = max(28, hdr.sizeHint().height())
@@ -238,6 +241,7 @@ class EntryListPanel(QWidget):
         )
         delegate = _ElideDelegate(self._entry_table)
         self._entry_table.setItemDelegate(delegate)
+        hdr.sectionClicked.connect(self._on_sort_header_clicked)
         self._entry_table.currentCellChanged.connect(self._on_cell_changed)
         self._entry_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._entry_table.customContextMenuRequested.connect(self._on_entry_table_menu)
@@ -279,6 +283,9 @@ class EntryListPanel(QWidget):
     def set_store(self, store: Store) -> None:
         self._store = store
         self._search_edit.clear()
+        self._sort_col = 1
+        self._sort_asc = False
+        self._entry_sort_header_labels()
         self._refresh_tags()
         self._refresh()
 
@@ -366,11 +373,14 @@ class EntryListPanel(QWidget):
         def text_w(s: str) -> int:
             return fm.horizontalAdvance(s) + pad
 
-        headers = ("Title", "Date", "Tags")
+        hdr_text = [
+            self._entry_table.horizontalHeaderItem(i).text()
+            for i in range(3)
+        ]
         mins = (120, 140, 72)
         maxs = (560, 200, 420)
 
-        widths = [text_w(headers[c]) for c in range(3)]
+        widths = [text_w(hdr_text[c]) for c in range(3)]
         for col in range(3):
             for row in range(self._entry_table.rowCount()):
                 it = self._entry_table.item(row, col)
@@ -388,6 +398,35 @@ class EntryListPanel(QWidget):
         for c in range(3):
             hdr.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
             self._entry_table.setColumnWidth(c, widths[c])
+
+    def _entry_sort_header_labels(self) -> None:
+        t0, t1 = "Title", "Date"
+        # ▲▼ 纯形状，不经过「升/降」语言；▲=当前升序键、▼=当前降序键（与逻辑一致）
+        if self._sort_col == 0:
+            t0 += " ▲" if self._sort_asc else " ▼"
+        elif self._sort_col == 1:
+            t1 += " ▲" if self._sort_asc else " ▼"
+        self._entry_table.setHorizontalHeaderLabels([t0, t1, "Tags"])
+
+    def _on_sort_header_clicked(self, logical_index: int) -> None:
+        if logical_index == 2:
+            return
+        if logical_index == self._sort_col:
+            self._sort_asc = not self._sort_asc
+        else:
+            self._sort_col = logical_index
+            self._sort_asc = logical_index == 0
+        self._entry_sort_header_labels()
+        self._refresh_entries(preserve_selection=True)
+
+    def _sort_entry_list(self, entries: list[Entry]) -> list[Entry]:
+        if self._sort_col == 0:
+            return sorted(
+                entries,
+                key=lambda e: (e.title or "").lower(),
+                reverse=not self._sort_asc,
+            )
+        return sorted(entries, key=lambda e: e.modified, reverse=not self._sort_asc)
 
     def _entry_tags_text(self, entry: Entry) -> str:
         return ", ".join(entry.tags) if entry.tags else ""
@@ -409,7 +448,7 @@ class EntryListPanel(QWidget):
         entries = self._store.search(keyword) if keyword else list(self._store.entries)
         if tag and tag != _ALL:
             entries = [e for e in entries if tag in e.tags]
-        entries = self._store.sorted_by_modified(entries)
+        entries = self._sort_entry_list(entries)
         current = self.current_entry() if preserve_selection else None
 
         self._displayed = entries

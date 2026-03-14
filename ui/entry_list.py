@@ -4,16 +4,14 @@ ui/entry_list.py - left panel: search bar, tag sidebar, entry list
 Layout:
     [Search bar                    ]
     [Tag list      | Entry list    ]
-    [New Entry button              ]
 
 Signals:
     entry_selected(Entry, int) — (entry, previous_row); previous_row -1 if none
-    new_entry_requested()   - emitted when user clicks New Entry
 """
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QLineEdit, QPushButton,
+    QLineEdit, QMenu,
 )
 from PySide6.QtCore import Signal, Qt
 
@@ -24,7 +22,7 @@ _ALL = "All"
 
 class EntryListPanel(QWidget):
     entry_selected = Signal(object, int)  # Entry, previous_row (-1 = no selection)
-    new_entry_requested = Signal()
+    delete_note_requested = Signal(object)  # Entry
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -35,13 +33,11 @@ class EntryListPanel(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        # Search bar
         self._search_edit = QLineEdit()
         self._search_edit.setPlaceholderText("Search...")
         self._search_edit.textChanged.connect(self._refresh)
         layout.addWidget(self._search_edit)
 
-        # Tag sidebar + entry list side by side
         mid_row = QHBoxLayout()
         mid_row.setSpacing(4)
 
@@ -52,14 +48,11 @@ class EntryListPanel(QWidget):
 
         self._entry_list = QListWidget()
         self._entry_list.currentItemChanged.connect(self._on_selection_changed)
+        self._entry_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._entry_list.customContextMenuRequested.connect(self._on_entry_list_menu)
         mid_row.addWidget(self._entry_list, 1)
 
         layout.addLayout(mid_row, 1)
-
-        # New entry button
-        new_btn = QPushButton("New Entry")
-        new_btn.clicked.connect(self.new_entry_requested)
-        layout.addWidget(new_btn)
 
     def set_store(self, store: Store) -> None:
         """Load a new store and refresh the display."""
@@ -105,9 +98,15 @@ class EntryListPanel(QWidget):
             self._entry_list.setCurrentRow(row)
         self._entry_list.blockSignals(False)
 
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
+    def _on_entry_list_menu(self, pos) -> None:
+        row = self._entry_list.row(self._entry_list.itemAt(pos))
+        if row < 0 or row >= len(self._displayed):
+            return
+        entry = self._displayed[row]
+        menu = QMenu(self)
+        act = menu.addAction("Delete")
+        act.triggered.connect(lambda: self.delete_note_requested.emit(entry))
+        menu.exec(self._entry_list.mapToGlobal(pos))
 
     def _current_tag(self) -> str:
         item = self._tag_list.currentItem()
@@ -124,7 +123,6 @@ class EntryListPanel(QWidget):
         for tag in self._store.all_tags():
             self._tag_list.addItem(tag)
 
-        # Restore previous tag selection
         items = self._tag_list.findItems(current_tag, Qt.MatchFlag.MatchExactly)
         if items:
             self._tag_list.setCurrentItem(items[0])
@@ -144,17 +142,13 @@ class EntryListPanel(QWidget):
         keyword = self._search_edit.text().strip()
         tag = self._current_tag()
 
-        # Filter by keyword
         entries = self._store.search(keyword) if keyword else list(self._store.entries)
 
-        # Filter by tag
         if tag and tag != _ALL:
             entries = [e for e in entries if tag in e.tags]
 
-        # Sort by modified descending
         entries = self._store.sorted_by_modified(entries)
 
-        # Remember current selection
         current = self.current_entry() if preserve_selection else None
 
         self._displayed = entries
@@ -163,11 +157,10 @@ class EntryListPanel(QWidget):
         for entry in entries:
             text = entry.title if entry.title else "(untitled)"
             item = QListWidgetItem(text)
-            item.setToolTip(entry.modified.astimezone().strftime('%Y-%m-%d %H:%M'))
+            item.setToolTip(entry.modified.astimezone().strftime('%Y-%m-%d %H:%M:%S'))
             self._entry_list.addItem(item)
         self._entry_list.blockSignals(False)
 
-        # Restore selection without triggering entry_selected signal
         if current is not None:
             self.select_entry(current)
 

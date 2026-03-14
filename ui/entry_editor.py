@@ -1,8 +1,9 @@
 """
 ui/entry_editor.py - right panel: title, tags, content editor with Apply/Cancel
 
-Apply  : writes edited fields into the Entry object, emits entry_changed(entry, True)
-Cancel : pending draft -> reset to empty draft; saved entry -> reload from entry
+Apply  : commit form to Entry, emit entry_changed (add/update store)
+Cancel : draft -> reset draft; saved entry -> reload from entry
+New    : new blank draft (same as menu Entry → New draft); MainWindow handles list + confirm
 """
 
 from PySide6.QtWidgets import (
@@ -17,6 +18,7 @@ from store import Entry
 class EntryEditorPanel(QWidget):
     entry_changed = Signal(object, bool)  # (Entry, refresh_list)
     pending_entry_discarded = Signal()
+    new_draft_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -53,10 +55,15 @@ class EntryEditorPanel(QWidget):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
+        self._new_btn = QPushButton("New")
+        self._new_btn.setToolTip("New blank draft (not in list until Apply)")
+        self._new_btn.clicked.connect(self.new_draft_requested.emit)
         self._apply_btn = QPushButton("Apply")
+        self._apply_btn.setToolTip("Add or update entry in list")
         self._apply_btn.clicked.connect(self._on_apply)
         self._cancel_btn = QPushButton("Cancel")
         self._cancel_btn.clicked.connect(self._on_cancel)
+        btn_row.addWidget(self._new_btn)
         btn_row.addWidget(self._apply_btn)
         btn_row.addWidget(self._cancel_btn)
         layout.addLayout(btn_row)
@@ -87,7 +94,7 @@ class EntryEditorPanel(QWidget):
         )
 
     def is_blank_draft(self) -> bool:
-        """空白草稿：未入库且表单全空（New Entry 再点一次不必重置）。"""
+        """空白草稿：未入库且表单全空（再点 New 不必重置）。"""
         return self._pending_add and self._form_empty()
 
     def _app_dirty_draft(self) -> bool:
@@ -112,18 +119,18 @@ class EntryEditorPanel(QWidget):
             self._modified_label.clear()
         else:
             self._modified_label.setText(
-                entry.modified.astimezone().strftime("%Y-%m-%d %H:%M")
+                entry.modified.astimezone().strftime("%Y-%m-%d %H:%M:%S")
             )
         self._set_enabled(True)
 
     def reset_to_new_draft(self) -> None:
-        """Same state as Entry → New Entry (empty title, Modified blank)."""
+        """Blank draft: new Entry(), not in store until Apply."""
         self.set_entry(Entry(), pending_add=True)
 
     def refresh_modified(self) -> None:
         if self._entry is not None and not self._pending_add:
             self._modified_label.setText(
-                self._entry.modified.astimezone().strftime("%Y-%m-%d %H:%M")
+                self._entry.modified.astimezone().strftime("%Y-%m-%d %H:%M:%S")
             )
 
     def _show_draft_ui(self) -> None:
@@ -136,6 +143,7 @@ class EntryEditorPanel(QWidget):
         self._title_edit.setEnabled(enabled)
         self._tags_edit.setEnabled(enabled)
         self._content_edit.setEnabled(enabled)
+        self._new_btn.setEnabled(enabled)
         self._apply_btn.setEnabled(enabled)
         self._cancel_btn.setEnabled(enabled)
 
@@ -160,5 +168,5 @@ class EntryEditorPanel(QWidget):
         self._tags_edit.setText(", ".join(self._entry.tags))
         self._content_edit.setPlainText(self._entry.content)
         self._modified_label.setText(
-            self._entry.modified.astimezone().strftime("%Y-%m-%d %H:%M")
+            self._entry.modified.astimezone().strftime("%Y-%m-%d %H:%M:%S")
         )

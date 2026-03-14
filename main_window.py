@@ -81,17 +81,11 @@ class MainWindow(QMainWindow):
         act_quit.triggered.connect(self.close)
         file_menu.addAction(act_quit)
 
-        # Entry menu
-        entry_menu = mb.addMenu("Entry")
-
-        act_new_entry = QAction("New Entry", self)
-        act_new_entry.triggered.connect(self._on_new_entry)
-        entry_menu.addAction(act_new_entry)
-
-        act_delete_entry = QAction("Delete Entry", self)
-        act_delete_entry.setShortcut(QKeySequence.StandardKey.Delete)
-        act_delete_entry.triggered.connect(self._on_delete_entry)
-        entry_menu.addAction(act_delete_entry)
+        # Delete: list context menu + shortcut (not in File menu)
+        act_delete = QAction("Delete", self)
+        act_delete.setShortcut(QKeySequence.StandardKey.Delete)
+        act_delete.triggered.connect(self._on_delete_entry)
+        self.addAction(act_delete)
 
     def _build_ui(self):
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -99,13 +93,14 @@ class MainWindow(QMainWindow):
         self._list_panel = EntryListPanel()
         self._list_panel.setMinimumWidth(200)
         self._list_panel.entry_selected.connect(self._on_entry_selected)
-        self._list_panel.new_entry_requested.connect(self._on_new_entry)
+        self._list_panel.delete_note_requested.connect(self._on_delete_note)
         splitter.addWidget(self._list_panel)
 
         self._editor_panel = EntryEditorPanel()
         splitter.addWidget(self._editor_panel)
         self._editor_panel.entry_changed.connect(self._on_entry_changed)
         self._editor_panel.pending_entry_discarded.connect(self._on_pending_entry_discarded)
+        self._editor_panel.new_draft_requested.connect(self._on_new_draft)
 
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
@@ -226,21 +221,20 @@ class MainWindow(QMainWindow):
     # Entry operations
     # ------------------------------------------------------------------
 
-    def _on_new_entry(self):
+    def _on_new_draft(self):
         try:
-            # 已是空白草稿：无提示、不重复 reset
             if self._editor_panel.is_blank_draft():
                 return
             if self._editor_panel.uncommitted_input():
                 msg = (
-                    "The current entry has edits not applied yet. Start a new blank entry and lose those edits?"
+                    "Unapplied edits to this entry will be lost. Start a new draft?"
                     if self._editor_panel.editor_differs_from_loaded_entry()
                     and not self._editor_panel.pending_add
-                    else "Replace the current draft with a new empty entry?"
+                    else "Discard current draft and start a new blank draft?"
                 )
                 reply = QMessageBox.question(
                     self,
-                    "Discard?",
+                    "New draft?",
                     msg,
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
@@ -256,13 +250,15 @@ class MainWindow(QMainWindow):
         self._update_title()
 
     def _on_delete_entry(self):
+        entry = self._list_panel.current_entry()
+        if entry is not None:
+            self._on_delete_note(entry)
+
+    def _on_delete_note(self, entry: Entry):
         try:
-            entry = self._list_panel.current_entry()
-            if entry is None:
-                return
             reply = QMessageBox.question(
-                self, "Delete Entry",
-                f"Delete '{entry.title}'?",
+                self, "Delete",
+                f"Delete '{entry.title or '(untitled)'}'?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:

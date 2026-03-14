@@ -46,7 +46,7 @@ python main.py
 - **File → New**：新建未保存文档  
 - **File → Open**：打开 `.page`（需口令，不允许空口令）  
 - **File → Save / Save As**：保存加密文件  
-- **Entry → New Entry**：新建一条笔记  
+- **右侧 New**：新空白草稿（**Apply** 后才进列表）；**列表右键 → Delete**（或选中后 **Delete**）  
 - 编辑后点 **Apply** 写入当前条目；**Cancel** 放弃本次修改  
 
 ## 文件格式

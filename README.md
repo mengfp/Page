@@ -21,7 +21,7 @@ Windows 下的本地加密笔记：数据用口令加密，只保存在本机 `.
 
   可从 [age releases](https://github.com/FiloSottile/age/releases) 下载 Windows 包，把上述两个 exe 放到与主程序同一目录：
   - **源码运行**：项目根目录（与 `crypto.py` 同级）  
-  - **发布**：整包为一个文件夹——`Page.exe` + `age.exe` + `age-plugin-batchpass.exe` + 依赖（**不单文件 exe**，避免每次启动解压、也方便 age 子进程）
+  - **发布**：整包为一个文件夹——根目录 **`Page.exe`** + **`age.exe`** + **`age-plugin-batchpass.exe`** + **`_internal/`**（Python/Qt；**不单文件 exe**）
 
 ## 安装（开发）
 
@@ -65,7 +65,7 @@ pyinstaller Page.spec
 ```
 
 4. 结果目录：**`dist/Page/`**  
-   - 运行 **`Page.exe`**（同目录下 `_internal` 内已含 Python、PySide6 及两个 age；`crypto` 在 frozen 下用 `_MEIPASS`，无需手抄 dll）。  
+   - **`Page.exe`** 与 **`age.exe`**、**`age-plugin-batchpass.exe`** 同在 **`dist/Page/`**（与源码根目录布局一致；`_internal` 仅 Python/PySide6 等）。  
 5. **分发**：把 **`dist/Page` 整个文件夹** 拷走即可（勿只拷单个 exe）。  
 6. 关联 `.page` 时，注册表里命令行指向 **`...\Page\Page.exe" "%1"`**。
 

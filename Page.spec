@@ -11,15 +11,11 @@ _datas = [("ui/page.ico", ".")]
 if os.path.isfile(os.path.join("ui", "password.ico")):
     _datas.append((os.path.join("ui", "password.ico"), "."))
 
-binaries = [
-    ("age.exe", "."),
-    ("age-plugin-batchpass.exe", "."),
-]
-
+# age 不进 _internal：打包结束复制到 dist/Page/，与 Page.exe 同目录（与源码根目录一致）
 a = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=binaries,
+    binaries=[],
     # password.ico 可选：存在则打进包，供 PassphraseDialog 标题栏
     datas=_datas,
     hiddenimports=[],
@@ -64,3 +60,15 @@ coll = COLLECT(
     upx_exclude=[],
     name="Page",
 )
+
+import shutil
+
+_app_root = os.path.join(DISTPATH, "Page")
+for _age in ("age.exe", "age-plugin-batchpass.exe"):
+    _src = os.path.join(SPECPATH, _age)
+    _dst = os.path.join(_app_root, _age)
+    if not os.path.isfile(_src):
+        raise SystemExit(
+            "Page.spec: 项目根目录缺少 %s，请放在与 Page.spec 同级后再 pyinstaller" % _age
+        )
+    shutil.copy2(_src, _dst)

@@ -17,15 +17,15 @@ No temporary files are used.
 import os
 import sys
 import subprocess
+import tempfile
 
 
 def _age_dir() -> str:
     """Return directory containing age.exe and age-plugin-batchpass.exe."""
-    if getattr(sys, 'frozen', False):
-        # PyInstaller onedir: runtime root (age exes bundled there; avoid onefile)
-        return sys._MEIPASS
-    else:
-        return os.path.dirname(os.path.abspath(__file__))
+    if getattr(sys, "frozen", False):
+        # PyInstaller onedir：age 与 Page.exe 同目录（spec 打包后复制到 dist/Page/，不在 _internal）
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def age_bundle_ready() -> bool:
@@ -42,7 +42,7 @@ def age_bundle_help_text() -> str:
         f"Expected in:\n{d}\n\n"
         "- age.exe\n"
         "- age-plugin-batchpass.exe\n\n"
-        "Same folder as Page (dev) or inside the app bundle (release)."
+        "Dev: project root. Release: same folder as Page.exe."
     )
 
 
@@ -54,21 +54,31 @@ def _run(args: list[str], stdin_data: bytes, passphrase: str) -> bytes:
     No console window is created on Windows.
     Returns stdout on success. Raises RuntimeError on failure.
     """
-    age_dir = _age_dir()
-    age_exe = os.path.join(age_dir, 'age.exe')
+    age_dir = os.path.abspath(_age_dir())
+    age_exe = os.path.join(age_dir, "age.exe")
 
-    # Inject age_dir into PATH so age.exe can find age-plugin-batchpass.exe
+    # PATH so age can find age-plugin-batchpass.exe (absolute dir only)
     env = os.environ.copy()
-    env['PATH'] = age_dir + os.pathsep + env.get('PATH', '')
-    env['AGE_PASSPHRASE'] = passphrase
+    env["PATH"] = age_dir + os.pathsep + env.get("PATH", "")
+    env["AGE_PASSPHRASE"] = passphrase
 
-    creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+    # Windows + dev: cwd is often the project root (= age_dir). Newer age/Go then
+    # resolves the plugin as .\age-plugin-batchpass.exe and refuses to run it.
+    # Run with cwd outside age_dir so LookPath yields a non-cwd path.
+    workdir = tempfile.gettempdir()
+    if os.path.normcase(os.path.normpath(workdir)) == os.path.normcase(
+        os.path.normpath(age_dir)
+    ):
+        workdir = os.environ.get("SystemRoot", r"C:\Windows")
+
+    creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
     proc = subprocess.run(
         [age_exe] + args,
         input=stdin_data,
         capture_output=True,
         env=env,
+        cwd=workdir,
         creationflags=creation_flags,
     )
 

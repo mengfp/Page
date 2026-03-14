@@ -33,7 +33,10 @@ pip install -r requirements.txt
 
 ```bash
 python main.py
+python main.py C:\path\to\notes.page
 ```
+
+第二行：命令行传入一个 `.page` 路径时，启动后会提示口令并打开该文件（与将来「双击关联到 **Page.exe**」行为一致；开发时用 `python main.py <路径>` 即可试）。
 
 启动时会检查 **age.exe** 与 **age-plugin-batchpass.exe** 是否在预期目录；缺失则提示路径并退出。
 

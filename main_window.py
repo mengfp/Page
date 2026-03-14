@@ -199,17 +199,22 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(self, "Open File", "", FILE_FILTER)
         if not path:
             return
+        self._complete_open(path)
 
+    def _complete_open(self, path: str) -> bool:
+        """
+        Open an existing file after passphrase. Caller ensures path is intended.
+        Returns True if the file was opened successfully.
+        """
         dlg = PassphraseDialog(self, filename=os.path.basename(path))
         if dlg.exec() != PassphraseDialog.DialogCode.Accepted:
-            return
+            return False
 
-        passphrase = dlg.passphrase()
         try:
-            self._app.open(path, passphrase)
+            self._app.open(path, dlg.passphrase())
         except Exception as e:
             self._report_error(e, "Failed to open file")
-            return
+            return False
 
         self._list_panel.set_store(self._app.store)
         self._list_panel.clear_selection()
@@ -217,6 +222,22 @@ class MainWindow(QMainWindow):
         self._sync_tag_suggestions()
         self._update_title()
         self._status(f"Opened: {path}")
+        return True
+
+    def open_initial_file(self, path: str) -> None:
+        """
+        First argument when launched (e.g. Page.exe \"file.page\"). No unsaved
+        prompt — cold start. Future file association will use Page.exe, not main.py.
+        """
+        path = os.path.normpath(os.path.abspath(path))
+        if not os.path.isfile(path):
+            QMessageBox.warning(
+                self,
+                "Page",
+                f"File not found:\n{path}",
+            )
+            return
+        self._complete_open(path)
 
     def _on_save(self):
         """File → Save = apply (buffer) + flush to disk."""

@@ -54,6 +54,9 @@ def main():
     try:
         window = MainWindow()
         window.show()
+        # Command line: Page.exe "path\to\file.page" (association will use exe)
+        if len(sys.argv) > 1:
+            window.open_initial_file(sys.argv[1])
     except Exception:
         traceback.print_exc()
         QMessageBox.critical(

@@ -4,13 +4,38 @@ ui/dialogs.py - modal dialogs
 Dialogs:
     PassphraseDialog   - ask for passphrase (open existing file)
     NewPassphraseDialog - ask for passphrase + confirm (new file / save as)
+
+凡输入口令的对话框（打开文件 / Set Passphrase）标题栏均优先使用 ui/password.ico。
 """
 
+import os
+import sys
+
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFormLayout, QLabel,
-    QLineEdit, QVBoxLayout, QMessageBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QLabel,
+    QLineEdit,
+    QVBoxLayout,
+    QMessageBox,
+    QApplication,
 )
 from PySide6.QtCore import Qt
+
+
+def apply_window_icon(widget) -> None:
+    """标题栏与主程序一致（依赖 QApplication.setWindowIcon 已设置）。"""
+    app = QApplication.instance()
+    if app is not None and not app.windowIcon().isNull():
+        widget.setWindowIcon(app.windowIcon())
+
+
+def _password_ico_path() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.join(sys._MEIPASS, "password.ico")
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "password.ico")
 
 
 class PassphraseDialog(QDialog):
@@ -44,6 +69,11 @@ class PassphraseDialog(QDialog):
         self._open_ok.setEnabled(False)
         self._passphrase_edit.textChanged.connect(self._update_open_ok_enabled)
         self._passphrase_edit.returnPressed.connect(self._on_open_return)
+        _pp = _password_ico_path()
+        if os.path.isfile(_pp):
+            self.setWindowIcon(QIcon(_pp))
+        else:
+            apply_window_icon(self)
 
     def _update_open_ok_enabled(self) -> None:
         self._open_ok.setEnabled(bool(self._passphrase_edit.text().strip()))
@@ -92,17 +122,33 @@ class NewPassphraseDialog(QDialog):
         layout.addWidget(buttons)
 
         self._confirm_edit.returnPressed.connect(self._on_accept)
+        _pp = _password_ico_path()
+        if os.path.isfile(_pp):
+            self.setWindowIcon(QIcon(_pp))
+        else:
+            apply_window_icon(self)
 
     def _on_accept(self):
         if not self._passphrase_edit.text():
-            QMessageBox.warning(self, "Error", "Passphrase cannot be empty.")
+            m = QMessageBox(self)
+            m.setIcon(QMessageBox.Icon.Warning)
+            m.setWindowTitle("Error")
+            m.setText("Passphrase cannot be empty.")
+            apply_window_icon(m)
+            m.exec()
             return
         if self._passphrase_edit.text() != self._confirm_edit.text():
-            QMessageBox.warning(self, "Error", "Passphrases do not match.")
+            m = QMessageBox(self)
+            m.setIcon(QMessageBox.Icon.Warning)
+            m.setWindowTitle("Error")
+            m.setText("Passphrases do not match.")
+            apply_window_icon(m)
+            m.exec()
             self._confirm_edit.clear()
             self._confirm_edit.setFocus()
             return
         self.accept()
+
 
     def passphrase(self) -> str:
         return self._passphrase_edit.text()

@@ -22,7 +22,11 @@ from store import Entry
 from version import APP_NAME, __version__
 from ui.entry_list import EntryListPanel
 from ui.entry_editor import EntryEditorPanel
-from ui.dialogs import PassphraseDialog, NewPassphraseDialog
+from ui.dialogs import (
+    PassphraseDialog,
+    NewPassphraseDialog,
+    apply_window_icon,
+)
 
 FILE_FILTER = "Page Files (*.page);;All Files (*)"
 
@@ -56,6 +60,7 @@ def _question_msg(
     b_ok = m.addButton(primary, role)
     b_cancel = m.addButton(secondary, QMessageBox.ButtonRole.RejectRole)
     m.setDefaultButton(b_cancel)
+    apply_window_icon(m)
     m.exec()
     return m.clickedButton() is b_ok
 
@@ -143,12 +148,15 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_about(self) -> None:
-        QMessageBox.about(
-            self,
-            f"About {APP_NAME}",
+        m = QMessageBox(self)
+        m.setWindowTitle(f"About {APP_NAME}")
+        m.setText(
             f"{APP_NAME}\n\nVersion {__version__}\n\n"
-            "Local encrypted notes. Data stays on this machine.",
+            "Local encrypted notes. Data stays on this machine."
         )
+        m.setIcon(QMessageBox.Icon.Information)
+        apply_window_icon(m)
+        m.exec()
 
     def _build_ui(self):
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -244,11 +252,12 @@ class MainWindow(QMainWindow):
         """
         path = os.path.normpath(os.path.abspath(path))
         if not os.path.isfile(path):
-            QMessageBox.warning(
-                self,
-                "Page",
-                f"File not found:\n{path}",
-            )
+            m = QMessageBox(self)
+            m.setIcon(QMessageBox.Icon.Warning)
+            m.setWindowTitle("Page")
+            m.setText(f"File not found:\n{path}")
+            apply_window_icon(m)
+            m.exec()
             return
         self._complete_open(path)
 
@@ -447,6 +456,7 @@ class MainWindow(QMainWindow):
         b_save = m.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
         b_discard = m.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
         m.addButton(QMessageBox.StandardButton.Cancel)
+        apply_window_icon(m)
         m.exec()
         clicked = m.clickedButton()
         if clicked is b_save:

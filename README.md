@@ -56,7 +56,7 @@ python -m unittest discover -s tests -p "test_*.py"
 
 ## 生成 Page.exe（PyInstaller onedir）
 
-1. 项目根目录已放好 **`age.exe`**、**`age-plugin-batchpass.exe`**、**`Page.ico`**（与开发时一致）。  
+1. 项目根目录已放好 **`age.exe`**、**`age-plugin-batchpass.exe`**；图标在 **`ui/page.ico`**（可选 **`ui/password.ico`** 供打开文件口令框）。  
 2. 安装打包工具：`pip install pyinstaller`  
 3. 在项目根执行：
 
@@ -68,6 +68,10 @@ pyinstaller Page.spec
    - 运行 **`Page.exe`**（同目录下 `_internal` 内已含 Python、PySide6 及两个 age；`crypto` 在 frozen 下用 `_MEIPASS`，无需手抄 dll）。  
 5. **分发**：把 **`dist/Page` 整个文件夹** 拷走即可（勿只拷单个 exe）。  
 6. 关联 `.page` 时，注册表里命令行指向 **`...\Page\Page.exe" "%1"`**。
+
+打包体积：`Page.spec` 里已排除未使用的 Qt 模块（QML/WebEngine/多媒体等），一般比默认 PyInstaller 瘦一截。若启动报错，从 `excludes` 里删掉相关模块再打包。本机若安装 [UPX](https://github.com/upx/upx)，`upx=True` 还可再压一点 DLL。
+
+窗口图标：`EXE(icon=ui/page.ico)` 只影响资源管理器里 exe 的图标；**运行后标题栏/任务栏** 靠 `setWindowIcon` 加载 **`page.ico`**（`datas` 打进 `_MEIPASS`）。**`ui/password.ico`** 可选，供 **打开文件 / 新建与 Save As 设口令** 两个对话框；存在时 `Page.spec` 会一并打包。
 
 ## 使用说明
 

@@ -12,6 +12,7 @@ from PySide6.QtCore import Signal, Slot, Qt, QStringListModel
 from PySide6.QtGui import QFont, QPalette
 
 from store import Entry
+from ui.dialogs import apply_window_icon
 
 _CHIP_STYLE = """
 #tagChip {
@@ -366,21 +367,27 @@ class EntryEditorPanel(QWidget):
                 return True
             if not title.strip():
                 if show_warning:
-                    QMessageBox.warning(
-                        self,
-                        "Title required",
-                        "Enter a title before Apply or Save. The title cannot be empty.",
+                    m = QMessageBox(self)
+                    m.setIcon(QMessageBox.Icon.Warning)
+                    m.setWindowTitle("Title required")
+                    m.setText(
+                        "Enter a title before Apply or Save. The title cannot be empty."
                     )
+                    apply_window_icon(m)
+                    m.exec()
                     self._title_edit.setFocus()
                 return False
         else:
             if not title.strip():
                 if show_warning:
-                    QMessageBox.warning(
-                        self,
-                        "Title required",
-                        "Enter a title before Apply or Save. The title cannot be empty.",
+                    m = QMessageBox(self)
+                    m.setIcon(QMessageBox.Icon.Warning)
+                    m.setWindowTitle("Title required")
+                    m.setText(
+                        "Enter a title before Apply or Save. The title cannot be empty."
                     )
+                    apply_window_icon(m)
+                    m.exec()
                     self._title_edit.setFocus()
                 return False
             if (

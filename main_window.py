@@ -40,7 +40,11 @@ class MainWindow(QMainWindow):
         self._list_panel.set_store(self._app.store)
         self._list_panel.clear_selection()
         self._editor_panel.reset_to_new_draft()
+        self._sync_tag_suggestions()
         self._update_title()
+
+    def _sync_tag_suggestions(self) -> None:
+        self._editor_panel.set_available_tags(self._app.store.all_tags())
 
     # ------------------------------------------------------------------
     # UI construction
@@ -123,6 +127,7 @@ class MainWindow(QMainWindow):
             self._list_panel.set_store(self._app.store)
             self._list_panel.clear_selection()
             self._editor_panel.reset_to_new_draft()
+            self._sync_tag_suggestions()
             self._update_title()
             self._status("New file created.")
         except Exception as e:
@@ -152,6 +157,7 @@ class MainWindow(QMainWindow):
         self._list_panel.set_store(self._app.store)
         self._list_panel.clear_selection()
         self._editor_panel.reset_to_new_draft()
+        self._sync_tag_suggestions()
         self._update_title()
         self._status(f"Opened: {path}")
 
@@ -267,6 +273,7 @@ class MainWindow(QMainWindow):
             self._list_panel.refresh()
             self._list_panel.clear_selection()
             self._editor_panel.reset_to_new_draft()
+            self._sync_tag_suggestions()
             self._update_title()
         except Exception as e:
             traceback.print_exception(type(e), e, e.__traceback__)
@@ -286,6 +293,7 @@ class MainWindow(QMainWindow):
                     self._list_panel.set_current_row_silent(previous_row)
                     return
             self._editor_panel.set_entry(entry, pending_add=False)
+            self._sync_tag_suggestions()
         except Exception as e:
             traceback.print_exception(type(e), e, e.__traceback__)
             QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
@@ -307,6 +315,7 @@ class MainWindow(QMainWindow):
                     self._editor_panel.reset_to_new_draft()
                 else:
                     self._list_panel.select_entry(entry)
+            self._sync_tag_suggestions()
             self._update_title()
         except Exception as e:
             traceback.print_exception(type(e), e, e.__traceback__)

@@ -18,7 +18,7 @@
 | 实体        | 说明                                                                |
 | --------- | ----------------------------------------------------------------- |
 | **Store** | 内存中的一组 `Entry`，序列化为 **JSON 数组** 再加密。                              |
-| **Entry** | `title`, `tags[]`, `content`, `modified`（ISO 8601）。**title 可重复**。 |
+| **Entry** | `title`, `tags[]`, `content`, `modified`。标签为 **小 chip**；**Add** 打开输入（可补全）；**右键 chip → Delete**。 |
 
 
 磁盘上的文件：`path` + 口令；内存：`dirty` 表示相对磁盘是否有未保存改动。
@@ -152,4 +152,5 @@
 | 修订   | New draft 理念；**New** 在右侧与 Apply/Cancel 并排；左栏去掉 New 按钮；菜单 **New draft**。 |
 | 修订   | 去掉 **Entry** 菜单；**Delete note** 并入 **File**（仍可用 Delete 键）。 |
 | 修订   | **Delete note** 从 File 移到 **列表右键**；Delete 键保留。 |
+| 修订   | Tags：更小 chip；无 ×；**右键 Delete**；**Tags 行右侧 Add** + 对话框补全。 |
 

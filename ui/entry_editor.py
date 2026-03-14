@@ -1,22 +1,184 @@
 """
-ui/entry_editor.py - right panel: title, tags, content editor with Apply/Cancel
-
-Apply  : commit form to Entry, emit entry_changed (add/update store)
-Cancel : draft -> reset draft; saved entry -> reload from entry
-New    : new blank draft (same as menu Entry → New draft); MainWindow handles list + confirm
+ui/entry_editor.py - right panel: title, tags (chips + Add), content, New/Apply/Cancel
 """
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
     QPlainTextEdit, QLabel, QFrame, QPushButton,
+    QScrollArea, QSizePolicy, QMenu, QDialog, QDialogButtonBox,
+    QCompleter,
 )
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Signal, Slot, Qt, QStringListModel
+from PySide6.QtGui import QFont
 
 from store import Entry
 
+_CHIP_STYLE = """
+#tagChip {
+    background-color: #c8c8c8;
+    color: #111;
+    border: 1px solid #888;
+    border-radius: 4px;
+    padding: 0px 5px;
+}
+"""
+
+# Tags row: no white panel — match window background
+_TAG_ROW_QSS = """
+QScrollArea { border: none; background: transparent; }
+QScrollArea > QWidget > QWidget { background: transparent; }
+"""
+
+
+class TagChipBar(QWidget):
+    """Small chips in a row; right-click chip → Delete; Add → tag dialog."""
+
+    _CHIP_H = 18
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._tags: list[str] = []
+        self._suggestions: list[str] = []
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(False)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setStyleSheet(_TAG_ROW_QSS)
+        self._scroll.viewport().setAutoFillBackground(False)
+        self._scroll.setFixedHeight(self._CHIP_H + 6)
+        self._scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        self._chips_inner = QWidget()
+        self._chips_inner.setAutoFillBackground(False)
+        self._chips_inner.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._chips_inner.setFixedHeight(self._CHIP_H)
+        self._chips_layout = QHBoxLayout(self._chips_inner)
+        self._chips_layout.setContentsMargins(2, 0, 2, 0)
+        self._chips_layout.setSpacing(4)
+        self._chips_layout.addStretch()
+        self._scroll.setWidget(self._chips_inner)
+        row.addWidget(self._scroll, 1)
+
+        self._add_tag_btn = QPushButton("Add")
+        self._add_tag_btn.setFlat(True)
+        self._add_tag_btn.setFixedHeight(self._CHIP_H + 6)
+        self._add_tag_btn.setToolTip("Add tag (comma = several); suggestions while typing")
+        self._add_tag_btn.clicked.connect(self._on_new_clicked)
+        row.addWidget(self._add_tag_btn)
+
+    def set_available_tags(self, names: list[str]) -> None:
+        self._suggestions = sorted(set(names))
+
+    def get_tags(self) -> list[str]:
+        return list(self._tags)
+
+    def set_tags(self, tags: list[str]) -> None:
+        self.clear()
+        for t in tags:
+            t = str(t).strip()
+            if t and t not in self._tags:
+                self._tags.append(t)
+                self._add_chip(t)
+
+    def clear(self) -> None:
+        while self._chips_layout.count() > 1:
+            item = self._chips_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._tags.clear()
+        self._resize_chips_inner()
+
+    def has_any_tag_or_input(self) -> bool:
+        return bool(self._tags)
+
+    def commit_pending_input(self) -> None:
+        pass
+
+    def _resize_chips_inner(self) -> None:
+        w = 6
+        for i in range(self._chips_layout.count() - 1):
+            it = self._chips_layout.itemAt(i)
+            if it.widget():
+                w += it.widget().sizeHint().width() + 4
+        self._chips_inner.setMinimumWidth(max(w, 40))
+        self._chips_inner.resize(max(w, 40), self._CHIP_H)
+
+    def _add_chip(self, text: str) -> None:
+        chip = QFrame()
+        chip.setObjectName("tagChip")
+        chip.setFixedHeight(self._CHIP_H)
+        chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        chip.setStyleSheet(_CHIP_STYLE)
+        chip.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        lab = QLabel(text)
+        lab.setStyleSheet("color: #111; background: transparent; border: none;")
+        f = QFont(lab.font())
+        f.setPointSize(max(f.pointSize() - 3, 7))
+        lab.setFont(f)
+        inner = QHBoxLayout(chip)
+        inner.setContentsMargins(4, 0, 4, 0)
+        inner.addWidget(lab)
+
+        def _menu(pos):
+            m = QMenu(self)
+            m.addAction("Delete", lambda: self._remove_chip(text, chip))
+
+            m.exec(chip.mapToGlobal(pos))
+
+        chip.customContextMenuRequested.connect(_menu)
+        self._chips_layout.insertWidget(self._chips_layout.count() - 1, chip)
+        self._resize_chips_inner()
+
+    def _remove_chip(self, text: str, chip: QFrame) -> None:
+        if text in self._tags:
+            self._tags.remove(text)
+        chip.deleteLater()
+        self._resize_chips_inner()
+
+    def _on_new_clicked(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Add tag")
+        form = QFormLayout(dlg)
+        edit = QLineEdit()
+        edit.setPlaceholderText("tag or a, b, c")
+        if self._suggestions:
+            c = QCompleter(dlg)
+            c.setModel(QStringListModel(self._suggestions))
+            c.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            c.setFilterMode(Qt.MatchFlag.MatchContains)
+            edit.setCompleter(c)
+        form.addRow("Tag(s):", edit)
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        edit.setFocus()
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        raw = edit.text().strip()
+        if not raw:
+            return
+        for p in raw.replace("，", ",").split(","):
+            p = p.strip()
+            if p and p not in self._tags:
+                self._tags.append(p)
+                self._add_chip(p)
+
+    def setEnabled(self, enabled: bool) -> None:
+        super().setEnabled(enabled)
+        self._add_tag_btn.setEnabled(enabled)
+
 
 class EntryEditorPanel(QWidget):
-    entry_changed = Signal(object, bool)  # (Entry, refresh_list)
+    entry_changed = Signal(object, bool)
     pending_entry_discarded = Signal()
     new_draft_requested = Signal()
 
@@ -30,18 +192,20 @@ class EntryEditorPanel(QWidget):
         layout.setSpacing(4)
 
         form = QFormLayout()
-
+        form.setHorizontalSpacing(20)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._title_edit = QLineEdit()
         self._title_edit.setPlaceholderText("Title")
         form.addRow("Title:", self._title_edit)
 
-        self._tags_edit = QLineEdit()
-        self._tags_edit.setPlaceholderText("tag1, tag2, tag3")
-        form.addRow("Tags:", self._tags_edit)
+        self._tag_bar = TagChipBar()
+        form.addRow("Tags:", self._tag_bar)
 
-        self._modified_label = QLabel()
-        form.addRow("Modified:", self._modified_label)
-
+        self._modified_edit = QLineEdit()
+        self._modified_edit.setReadOnly(True)
+        self._modified_edit.setPlaceholderText("")
+        self._modified_edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        form.addRow("Modified:", self._modified_edit)
         layout.addLayout(form)
 
         line = QFrame()
@@ -71,6 +235,9 @@ class EntryEditorPanel(QWidget):
         self._set_enabled(True)
         self._show_draft_ui()
 
+    def set_available_tags(self, names: list[str]) -> None:
+        self._tag_bar.set_available_tags(names)
+
     @property
     def pending_add(self) -> bool:
         return self._pending_add
@@ -83,10 +250,9 @@ class EntryEditorPanel(QWidget):
         return False
 
     def editor_differs_from_loaded_entry(self) -> bool:
-        """已入库条目在右侧改过但未 Apply 时 True。"""
         if self._pending_add:
             return False
-        tags = [t.strip() for t in self._tags_edit.text().split(",") if t.strip()]
+        tags = self._tag_bar.get_tags()
         return (
             self._title_edit.text() != self._entry.title
             or tags != self._entry.tags
@@ -94,54 +260,50 @@ class EntryEditorPanel(QWidget):
         )
 
     def is_blank_draft(self) -> bool:
-        """空白草稿：未入库且表单全空（再点 New 不必重置）。"""
         return self._pending_add and self._form_empty()
 
     def _app_dirty_draft(self) -> bool:
-        """Draft with any content — worth confirming before discard."""
         return self._pending_add and not self._form_empty()
 
     def _form_empty(self) -> bool:
         return (
             not self._title_edit.text().strip()
-            and not self._tags_edit.text().strip()
+            and not self._tag_bar.has_any_tag_or_input()
             and not self._content_edit.toPlainText().strip()
         )
 
     def set_entry(self, entry: Entry, *, pending_add: bool) -> None:
-        """Load entry. pending_add=True: not in store yet, Modified stays blank."""
         self._entry = entry
         self._pending_add = pending_add
         self._title_edit.setText(entry.title)
-        self._tags_edit.setText(", ".join(entry.tags))
+        self._tag_bar.set_tags(entry.tags)
         self._content_edit.setPlainText(entry.content)
         if pending_add:
-            self._modified_label.clear()
+            self._modified_edit.clear()
         else:
-            self._modified_label.setText(
+            self._modified_edit.setText(
                 entry.modified.astimezone().strftime("%Y-%m-%d %H:%M:%S")
             )
         self._set_enabled(True)
 
     def reset_to_new_draft(self) -> None:
-        """Blank draft: new Entry(), not in store until Apply."""
         self.set_entry(Entry(), pending_add=True)
 
     def refresh_modified(self) -> None:
         if self._entry is not None and not self._pending_add:
-            self._modified_label.setText(
+            self._modified_edit.setText(
                 self._entry.modified.astimezone().strftime("%Y-%m-%d %H:%M:%S")
             )
 
     def _show_draft_ui(self) -> None:
         self._title_edit.clear()
-        self._tags_edit.clear()
-        self._modified_label.clear()
+        self._tag_bar.clear()
+        self._modified_edit.clear()
         self._content_edit.clear()
 
     def _set_enabled(self, enabled: bool) -> None:
         self._title_edit.setEnabled(enabled)
-        self._tags_edit.setEnabled(enabled)
+        self._tag_bar.setEnabled(enabled)
         self._content_edit.setEnabled(enabled)
         self._new_btn.setEnabled(enabled)
         self._apply_btn.setEnabled(enabled)
@@ -150,9 +312,7 @@ class EntryEditorPanel(QWidget):
     @Slot(bool)
     def _on_apply(self, _checked: bool = False) -> None:
         self._entry.title = self._title_edit.text()
-        self._entry.tags = [
-            t.strip() for t in self._tags_edit.text().split(",") if t.strip()
-        ]
+        self._entry.tags = self._tag_bar.get_tags()
         self._entry.content = self._content_edit.toPlainText()
         self._entry.touch()
         self._pending_add = False
@@ -165,8 +325,8 @@ class EntryEditorPanel(QWidget):
             self.reset_to_new_draft()
             return
         self._title_edit.setText(self._entry.title)
-        self._tags_edit.setText(", ".join(self._entry.tags))
+        self._tag_bar.set_tags(self._entry.tags)
         self._content_edit.setPlainText(self._entry.content)
-        self._modified_label.setText(
+        self._modified_edit.setText(
             self._entry.modified.astimezone().strftime("%Y-%m-%d %H:%M:%S")
         )

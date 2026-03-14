@@ -2,8 +2,8 @@
 crypto.py - age encryption/decryption wrapper
 
 Dependencies:
-    age.exe and age-plugin-batchpass.exe must be in the same directory
-    as this script or the PyInstaller bundle.
+    age.exe and age-plugin-batchpass.exe must sit next to the app
+    (project root when dev; same folder as Page.exe when shipped as a directory / PyInstaller onedir).
 
 Flow:
     Encrypt: plaintext bytes -> age encrypt (armor) -> str
@@ -22,10 +22,28 @@ import subprocess
 def _age_dir() -> str:
     """Return directory containing age.exe and age-plugin-batchpass.exe."""
     if getattr(sys, 'frozen', False):
-        # PyInstaller bundle: executables are in _MEIPASS
+        # PyInstaller onedir: runtime root (age exes bundled there; avoid onefile)
         return sys._MEIPASS
     else:
         return os.path.dirname(os.path.abspath(__file__))
+
+
+def age_bundle_ready() -> bool:
+    """True if age.exe and age-plugin-batchpass.exe exist next to app / in bundle."""
+    d = _age_dir()
+    return os.path.isfile(os.path.join(d, "age.exe")) and os.path.isfile(
+        os.path.join(d, "age-plugin-batchpass.exe")
+    )
+
+
+def age_bundle_help_text() -> str:
+    d = _age_dir()
+    return (
+        f"Expected in:\n{d}\n\n"
+        "- age.exe\n"
+        "- age-plugin-batchpass.exe\n\n"
+        "Same folder as Page (dev) or inside the app bundle (release)."
+    )
 
 
 def _run(args: list[str], stdin_data: bytes, passphrase: str) -> bytes:

@@ -9,6 +9,7 @@ import sys
 import traceback
 
 from PySide6.QtWidgets import QApplication, QMessageBox
+import crypto
 from main_window import MainWindow
 from version import __version__
 
@@ -41,6 +42,14 @@ def main():
     app.setApplicationName("Page")
     app.setApplicationVersion(__version__)
     _install_excepthook()
+
+    if not crypto.age_bundle_ready():
+        QMessageBox.critical(
+            None,
+            "age not found",
+            "Cannot encrypt without age.\n\n" + crypto.age_bundle_help_text(),
+        )
+        sys.exit(1)
 
     try:
         window = MainWindow()

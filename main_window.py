@@ -168,6 +168,10 @@ class MainWindow(QMainWindow):
     # File operations
     # ------------------------------------------------------------------
 
+    def _report_error(self, exc: BaseException, message: str = "Operation failed") -> None:
+        traceback.print_exception(type(exc), exc, exc.__traceback__)
+        QMessageBox.critical(self, "Error", f"{message}\n\n{exc}")
+
     def _on_new(self):
         try:
             r = self._offer_save_or_discard("Start a new file without saving?")
@@ -183,8 +187,7 @@ class MainWindow(QMainWindow):
             self._update_title()
             self._status("New file created.")
         except Exception as e:
-            traceback.print_exception(type(e), e, e.__traceback__)
-            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
+            self._report_error(e)
 
     def _on_open(self):
         r = self._offer_save_or_discard("Open another file without saving?")
@@ -205,8 +208,7 @@ class MainWindow(QMainWindow):
         try:
             self._app.open(path, passphrase)
         except Exception as e:
-            traceback.print_exception(type(e), e, e.__traceback__)
-            QMessageBox.critical(self, "Error", f"Failed to open file:\n{e}")
+            self._report_error(e, "Failed to open file")
             return
 
         self._list_panel.set_store(self._app.store)
@@ -263,8 +265,7 @@ class MainWindow(QMainWindow):
         try:
             self._app.save_as(path, dlg.passphrase())
         except Exception as e:
-            traceback.print_exception(type(e), e, e.__traceback__)
-            QMessageBox.critical(self, "Error", f"Failed to save file:\n{e}")
+            self._report_error(e, "Failed to save file")
             return False
 
         self._editor_panel.refresh_modified()
@@ -276,8 +277,7 @@ class MainWindow(QMainWindow):
         try:
             self._app.save()
         except Exception as e:
-            traceback.print_exception(type(e), e, e.__traceback__)
-            QMessageBox.critical(self, "Error", f"Failed to save:\n{e}")
+            self._report_error(e, "Failed to save")
             return False
         self._editor_panel.refresh_modified()
         self._update_title()
@@ -320,8 +320,7 @@ class MainWindow(QMainWindow):
             self._list_panel.clear_selection()
             self._editor_panel.reset_to_new_draft()
         except Exception as e:
-            traceback.print_exception(type(e), e, e.__traceback__)
-            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
+            self._report_error(e)
 
     def _on_pending_entry_discarded(self):
         self._update_title()
@@ -351,8 +350,7 @@ class MainWindow(QMainWindow):
             self._sync_tag_suggestions()
             self._update_title()
         except Exception as e:
-            traceback.print_exception(type(e), e, e.__traceback__)
-            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
+            self._report_error(e)
 
     @Slot(object, int)
     def _on_entry_selected(self, entry: Entry, previous_row: int):
@@ -372,8 +370,7 @@ class MainWindow(QMainWindow):
             self._editor_panel.set_entry(entry, pending_add=False)
             self._sync_tag_suggestions()
         except Exception as e:
-            traceback.print_exception(type(e), e, e.__traceback__)
-            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
+            self._report_error(e)
 
     @Slot(object, bool)
     def _on_entry_changed(self, entry, refresh_list):
@@ -395,8 +392,7 @@ class MainWindow(QMainWindow):
             self._sync_tag_suggestions()
             self._update_title()
         except Exception as e:
-            traceback.print_exception(type(e), e, e.__traceback__)
-            QMessageBox.critical(self, "Error", f"Operation failed:\n{e}")
+            self._report_error(e)
 
     # ------------------------------------------------------------------
     # Helpers

@@ -442,12 +442,8 @@ class MainWindow(QMainWindow):
                 self._app.update_entry(entry)
             if refresh_list:
                 self._list_panel.refresh()
-                if is_new:
-                    # Was draft → now in list; new Apply must be a new Entry, not update same row
-                    self._list_panel.clear_selection()
-                    self._editor_panel.reset_to_new_draft()
-                else:
-                    self._list_panel.select_entry(entry)
+                # After Apply, keep the applied entry selected in list and in editor (new or existing).
+                self._list_panel.select_entry(entry)
             self._sync_tag_suggestions()
             self._update_title()
         except Exception as e:

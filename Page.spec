@@ -17,7 +17,9 @@ if sys.platform == "win32":
     _app_name = getattr(_v, "APP_NAME", "Page")
     _parts = [int(p) for p in _ver_str.split(".")[:4]]
     _ver_tuple = tuple(_parts + [0] * (4 - len(_parts)))[:4]
-    _version_file = os.path.join(SPECPATH, "version_info.txt")
+    _build_dir = os.path.join(SPECPATH, "build")
+    os.makedirs(_build_dir, exist_ok=True)
+    _version_file = os.path.join(_build_dir, "version_info.txt")
     with open(_version_file, "w", encoding="utf-8") as _f:
         _f.write("""VSVersionInfo(
   ffi=FixedFileInfo(

@@ -167,10 +167,11 @@ class Store:
     # ------------------------------------------------------------------
 
     def search(self, keyword: str) -> list[Entry]:
-        """Full-text search across title, tags, and content."""
-        if not keyword:
+        """Full-text search: split on spaces, AND match across title, tags, content."""
+        words = [w for w in keyword.strip().split() if w]
+        if not words:
             return list(self.entries)
-        return [e for e in self.entries if e.matches(keyword)]
+        return [e for e in self.entries if all(e.matches(w) for w in words)]
 
     def filter_by_tag(self, tag: str) -> list[Entry]:
         """Return entries that have the given tag."""

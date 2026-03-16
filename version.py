@@ -1,6 +1,6 @@
 """Single place for app name + version (About, packaging)."""
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 APP_NAME = "Page"
 
 # Decrypted .page root "id" must equal this. Root "version" is always __version__ (no separate schema version).

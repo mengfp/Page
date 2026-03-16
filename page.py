@@ -9,22 +9,19 @@ Goals:
   (e.g. Termux on Android), but usable on regular Linux/Windows shells.
 - Re-use the existing Store/Entry logic without modifying shared code.
 
-Current features:
-- Search box at the top (full-text, multi-word AND, same as GUI).
-- List of matching entries (index + title + modified time).
-- Open an entry to view full details in a simple reader.
-- Quit with a single key.
-
-No editing or saving is implemented yet.
+This script is intentionally simple on the CLI side:
+- No -h/--help flags or subcommands.
+- If no arguments are given, print product info and usage then exit(0).
+- If one or more arguments are given, the first is treated as the .page path.
 """
 
-import argparse
 import curses
 import subprocess
 import sys
 from typing import List
 
 from store import Store, Entry
+from version import APP_NAME, __version__
 
 
 def _decrypt_with_age(path: str) -> bytes:
@@ -264,12 +261,23 @@ def _main_curses(stdscr: "curses._CursesWindow", store: Store) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Curses TUI viewer for .page files.")
-    parser.add_argument("path", help="Path to .page file")
-    args = parser.parse_args(argv)
+    # CLI behavior:
+    # - No args: print product info + usage, exit 0.
+    # - One or more args: treat argv[0] as path to .page file; ignore the rest.
+    if argv is None:
+        argv = sys.argv[1:]
+    if not argv:
+        sys.stdout.write(f"{APP_NAME} TUI viewer (version {__version__})\n")
+        sys.stdout.write("https://github.com/mengfp/page\n")
+        sys.stdout.write("Usage:\n")
+        sys.stdout.write("  python page.py PATH_TO_FILE.page\n")
+        sys.stdout.write("  (or make page.py executable and run ./page.py PATH)\n")
+        return 0
+
+    path = argv[0]
 
     try:
-        raw = _decrypt_with_age(args.path)
+        raw = _decrypt_with_age(path)
         store = Store.from_bytes(raw)
     except Exception as e:
         sys.stderr.write(f"{e}\n")

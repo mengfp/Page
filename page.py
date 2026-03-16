@@ -232,6 +232,8 @@ def _main_curses(stdscr: "curses._CursesWindow", store: Store) -> None:
     curses.curs_set(0)  # hide cursor
     stdscr.nodelay(False)
     stdscr.keypad(True)
+    # ESC delay 250ms: responsive enough, safe for remote/slow terminals
+    curses.set_escdelay(250)
 
     list_view = ListView(store)
     current: object = list_view  # either ListView or DetailView

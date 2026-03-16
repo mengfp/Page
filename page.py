@@ -71,7 +71,7 @@ def _format_entry_summary(idx: int, entry: Entry, width: int) -> str:
 
 class ListView:
     """
-    Top search box + entry list.
+    Entry list above, search line at bottom (near soft keyboard).
     - search_text: current contents of search box
     - displayed: entries matching search_text
     - selected: index into displayed (0-based)
@@ -98,11 +98,11 @@ class ListView:
           - 'open': enter detail view for current selection
           - 'quit': exit program
         """
-        if ch in (curses.KEY_UP, ord("k")):
+        if ch == curses.KEY_UP:
             if self.displayed:
                 self.selected = max(0, self.selected - 1)
             return None
-        if ch in (curses.KEY_DOWN, ord("j")):
+        if ch == curses.KEY_DOWN:
             if self.displayed:
                 self.selected = min(len(self.displayed) - 1, self.selected + 1)
             return None
@@ -110,7 +110,7 @@ class ListView:
             if self.displayed:
                 return "open"
             return None
-        if ch in (27, ord("q")):  # ESC or q
+        if ch == 27:  # ESC only (q goes to search box)
             return "quit"
 
         # Backspace keys (terminal-dependent)
@@ -139,33 +139,31 @@ class ListView:
         max_y, max_x = stdscr.getmaxyx()
         stdscr.erase()
 
-        # Search line
-        search_label = "Search: "
-        stdscr.addnstr(0, 0, search_label, max_x)
-        stdscr.addnstr(0, len(search_label), self.search_text, max_x - len(search_label))
-
-        # List starts at line 1
-        list_top = 1
-        list_height = max_y - list_top - 1  # leave last line for status
+        # List occupies rows 0 .. max_y-2; search line at bottom (max_y-1)
+        list_height = max_y - 1
+        scroll_offset = min(
+            max(0, self.selected - list_height + 1),
+            max(0, len(self.displayed) - list_height),
+        )
         for i in range(list_height):
-            row = list_top + i
-            if i >= len(self.displayed):
-                # Clear rest of lines
-                stdscr.move(row, 0)
+            idx = scroll_offset + i
+            if idx >= len(self.displayed):
+                stdscr.move(i, 0)
                 stdscr.clrtoeol()
                 continue
-            entry = self.displayed[i]
-            line = _format_entry_summary(i, entry, max_x)
-            if i == self.selected:
+            entry = self.displayed[idx]
+            line = _format_entry_summary(idx, entry, max_x)
+            if idx == self.selected:
                 stdscr.attron(curses.A_REVERSE)
-                stdscr.addnstr(row, 0, line, max_x)
+                stdscr.addnstr(i, 0, line, max_x)
                 stdscr.attroff(curses.A_REVERSE)
             else:
-                stdscr.addnstr(row, 0, line, max_x)
+                stdscr.addnstr(i, 0, line, max_x)
 
-        # Status line
-        status = "[UP/DOWN] move  [Enter] open  [q] quit"
-        stdscr.addnstr(max_y - 1, 0, status, max_x)
+        # Search line at bottom (near soft keyboard)
+        search_label = "Search: "
+        stdscr.addnstr(max_y - 1, 0, search_label, max_x)
+        stdscr.addnstr(max_y - 1, len(search_label), self.search_text, max_x - len(search_label))
 
 
 class DetailView:
@@ -180,20 +178,19 @@ class DetailView:
         Returns:
           - None: stay in detail view
           - 'back': go back to list
-          - 'quit': exit program
         """
-        if ch in (ord("q"), 27):  # q or ESC
+        if ch == 27:  # ESC
             return "back"
-        if ch in (curses.KEY_UP, ord("k")):
+        if ch == curses.KEY_UP:
             self._scroll = max(0, self._scroll - 1)
             return None
-        if ch in (curses.KEY_DOWN, ord("j")):
+        if ch == curses.KEY_DOWN:
             self._scroll += 1
             return None
-        if ch in (curses.KEY_PPAGE,):  # Page Up
+        if ch == curses.KEY_PPAGE:
             self._scroll = max(0, self._scroll - 10)
             return None
-        if ch in (curses.KEY_NPAGE,):  # Page Down
+        if ch == curses.KEY_NPAGE:
             self._scroll += 10
             return None
         return None
@@ -221,19 +218,14 @@ class DetailView:
             stdscr.addnstr(row, 0, h, max_x)
             row += 1
 
-        # Content area
+        # Content area (full remaining height, no status line)
         content_lines = self._entry.content.splitlines() or [""]
-        visible_height = max_y - row - 1  # leave status line
+        visible_height = max_y - row
         start = min(self._scroll, max(0, len(content_lines) - visible_height))
-        end = start + visible_height
-        for i, line in enumerate(content_lines[start:end]):
-            if row + i >= max_y - 1:
+        for i, line in enumerate(content_lines[start : start + visible_height]):
+            if row + i >= max_y:
                 break
             stdscr.addnstr(row + i, 0, line, max_x)
-
-        # Status line
-        status = "[UP/DOWN] scroll  [q] back"
-        stdscr.addnstr(max_y - 1, 0, status, max_x)
 
 
 def _main_curses(stdscr: "curses._CursesWindow", store: Store) -> None:
@@ -267,8 +259,6 @@ def _main_curses(stdscr: "curses._CursesWindow", store: Store) -> None:
             if action == "back":
                 current = list_view
                 continue
-            if action == "quit":
-                return
 
 
 def main(argv: list[str] | None = None) -> int:

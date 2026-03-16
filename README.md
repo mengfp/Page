@@ -56,6 +56,8 @@ python -m unittest discover -s tests -p "test_*.py"
 
 **只考虑文件夹分发**：主程序 + 两个 age 的 exe 同目录（PyInstaller 用 **onedir**，勿用 onefile）。不单 exe，省去解压与路径折腾。
 
+**预构建包**：若从 GitHub 发布，可在仓库的 **Releases** 页面下载 Windows 压缩包（如 `Page-0.2.0-win-x64.zip`），解压得到 `Page` 文件夹（内含 `Page.exe`、`age.exe`、`age-plugin-batchpass.exe` 与 `_internal/`），直接运行 `Page.exe` 即可。
+
 ## 生成 Page.exe（PyInstaller onedir）
 
 1. 项目根目录已放好 **`age.exe`**、**`age-plugin-batchpass.exe`**；图标在 **`ui/page.ico`**（可选 **`ui/password.ico`** 供打开文件口令框）。  

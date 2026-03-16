@@ -25,6 +25,16 @@
 
 磁盘上的文件：`path` + 口令；内存：`dirty` 表示相对磁盘是否有未保存改动。
 
+### 2.1 磁盘格式（.page）
+
+解密后为 **UTF-8 JSON**。根对象字段：**`id`**（固定为 `PAGE_DOCUMENT_ID`）、**`version`**（与 `version.py` 的 `__version__` 同源，无单独文件格式版本号）、**`entries`**（数组）。每条 entry：**`title`**、**`tags`**（字符串数组）、**`content`**、**`modified`**（ISO 8601 字符串）。序列化为紧凑 JSON（无缩进，`separators=(',', ':')`），再经 age（batchpass）加密，扩展名 `.page`。
+
+### 2.2 UI 约定
+
+- **用户可见文案**（菜单、按钮、占位符、对话框）**统一英文**；注释与文档语言不限。
+- **左侧列表**列序：Title | Date | Tags。
+- **右侧表单**字段序：Title → Date → Tags → 分隔线 → Content → 按钮。
+
 ---
 
 ## 3. 初始状态（启动完成）
@@ -117,10 +127,7 @@
 
 **MainWindow：**
 
-- **entry 不在 `store.entries`**（草稿首次 Apply）  
-→ `add_entry` → 刷新列表 → **无选中** → **空白草稿**（下一条必须是新对象）。
-- **已在 store**（从列表打开后编辑）  
-→ `update_entry` → 刷新 → **仍选中该条**。
+- 无论 **草稿首次 Apply** 还是 **已入库条目编辑后 Apply**：`add_entry` / `update_entry` → 刷新列表 → **选中刚应用的那条**，右侧继续显示该条。要再新建则点 **New**。
 
 ### 5.11 右侧 Cancel
 

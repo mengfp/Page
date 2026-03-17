@@ -16,8 +16,10 @@ This script is intentionally simple on the CLI side:
 """
 
 import curses
+import locale
 import subprocess
 import sys
+import unicodedata
 from typing import List
 
 from store import Store, Entry
@@ -49,21 +51,48 @@ def _decrypt_with_age(path: str) -> bytes:
     return proc.stdout
 
 
-def _format_entry_summary(idx: int, entry: Entry, width: int) -> str:
-    """Return a single-line summary: index, title, modified."""
-    idx_str = f"{idx:3d} "
-    when = entry.modified.astimezone().strftime("%Y-%m-%d %H:%M")
-    # Reserve space for index + 1 space + date + 1 space
-    prefix = idx_str
-    suffix = " " + when
-    avail = max(0, width - len(prefix) - len(suffix))
+def _col_width(s: str) -> int:
+    """Return the display width of s in terminal columns."""
+    w = 0
+    for c in s:
+        w += 2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
+    return w
+
+
+def _truncate_to_cols(s: str, max_cols: int) -> str:
+    """Return the longest prefix of s whose display width <= max_cols."""
+    w = 0
+    for i, c in enumerate(s):
+        cw = 2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
+        if w + cw > max_cols:
+            return s[:i]
+        w += cw
+    return s
+
+
+def _format_entry_summary(idx: int, entry: Entry, safe_cols: int) -> str:
+    """
+    Single-line summary: index + title + modified date.
+    safe_cols is the usable line width (already excludes the right safety margin).
+    Title is truncated by display columns so the line fits.
+    """
+    prefix = f"{idx:3d} "
+    suffix = " " + entry.modified.astimezone().strftime("%Y-%m-%d %H:%M")
+    # Both prefix and suffix are pure ASCII, so len() == col width.
+    avail = max(0, safe_cols - len(prefix) - len(suffix))
     title = entry.title or "(untitled)"
-    if len(title) > avail:
-        if avail > 1:
-            title = title[: avail - 1] + "…"
-        else:
-            title = ""
-    return f"{prefix}{title}{suffix}"
+    title_trunc = _truncate_to_cols(title, avail - 2)  # reserve 2 cols for "…"
+    if _col_width(title_trunc) < _col_width(title):
+        title_trunc += "…"
+    return f"{prefix}{title_trunc}{suffix}"
+
+
+def _addstr_safe(stdscr: "curses._CursesWindow", row: int, col: int, s: str) -> None:
+    """addstr wrapper that silently ignores curses errors (e.g. bottom-right corner)."""
+    try:
+        stdscr.addstr(row, col, s)
+    except curses.error:
+        pass
 
 
 class ListView:
@@ -87,14 +116,28 @@ class ListView:
         else:
             self.selected = max(0, min(self.selected, len(self.displayed) - 1))
 
-    def handle_key(self, ch: int) -> str | None:
+    def handle_key(self, ch: int | str) -> str | None:
         """
-        Handle a keypress.
+        Handle a keypress. get_wch() returns str for printable chars, int for special keys.
         Returns:
           - None: stay in list view
           - 'open': enter detail view for current selection
           - 'quit': exit program
         """
+        # Printable character (including Chinese) from get_wch()
+        if isinstance(ch, str):
+            if ch == "\x1b":          # ESC returned as string by some terminals
+                return "quit"
+            if ch in ("\n", "\r"):    # Enter returned as string by some terminals
+                if self.displayed:
+                    return "open"
+                return None
+            if ch >= " ":             # skip other control characters
+                self.search_text += ch
+                self._refilter()
+            return None
+
+        # Special / control keys returned as int
         if ch == curses.KEY_UP:
             if self.displayed:
                 self.selected = max(0, self.selected - 1)
@@ -107,20 +150,12 @@ class ListView:
             if self.displayed:
                 return "open"
             return None
-        if ch == 27:  # ESC only (q goes to search box)
+        if ch == 27:                  # ESC as int
             return "quit"
-
-        # Backspace keys (terminal-dependent)
         if ch in (curses.KEY_BACKSPACE, 127, 8):
             if self.search_text:
                 self.search_text = self.search_text[:-1]
                 self._refilter()
-            return None
-
-        # Printable ASCII range; keep it simple for now.
-        if 32 <= ch <= 126:
-            self.search_text += chr(ch)
-            self._refilter()
             return None
 
         return None
@@ -136,6 +171,10 @@ class ListView:
         max_y, max_x = stdscr.getmaxyx()
         stdscr.erase()
 
+        # One-column safety margin: never write to column max_x-1 to avoid
+        # the ncurses bottom-right-corner ERR (cursor would move off-screen).
+        safe_cols = max_x - 1
+
         # List occupies rows 0 .. max_y-2; search line at bottom (max_y-1)
         list_height = max_y - 1
         scroll_offset = min(
@@ -149,18 +188,21 @@ class ListView:
                 stdscr.clrtoeol()
                 continue
             entry = self.displayed[idx]
-            line = _format_entry_summary(idx, entry, max_x)
+            line = _truncate_to_cols(_format_entry_summary(idx, entry, safe_cols), safe_cols)
             if idx == self.selected:
                 stdscr.attron(curses.A_REVERSE)
-                stdscr.addnstr(i, 0, line, max_x)
+                _addstr_safe(stdscr, i, 0, line)
                 stdscr.attroff(curses.A_REVERSE)
             else:
-                stdscr.addnstr(i, 0, line, max_x)
+                _addstr_safe(stdscr, i, 0, line)
 
-        # Search line at bottom (near soft keyboard)
+        # Search line at bottom
         search_label = "Search: "
-        stdscr.addnstr(max_y - 1, 0, search_label, max_x)
-        stdscr.addnstr(max_y - 1, len(search_label), self.search_text, max_x - len(search_label))
+        # Available cols for user text: exclude label and safety margin
+        avail_cols = max(0, safe_cols - len(search_label))
+        display_text = _truncate_to_cols(self.search_text, avail_cols)
+        _addstr_safe(stdscr, max_y - 1, 0, search_label)
+        _addstr_safe(stdscr, max_y - 1, len(search_label), display_text)
 
 
 class DetailView:
@@ -170,13 +212,17 @@ class DetailView:
         self._entry = entry
         self._scroll: int = 0
 
-    def handle_key(self, ch: int) -> str | None:
+    def handle_key(self, ch: int | str) -> str | None:
         """
         Returns:
           - None: stay in detail view
           - 'back': go back to list
         """
-        if ch == 27:  # ESC
+        if isinstance(ch, str):
+            if ch == "\x1b":          # ESC returned as string by some terminals
+                return "back"
+            return None
+        if ch == 27:                  # ESC as int
             return "back"
         if ch == curses.KEY_UP:
             self._scroll = max(0, self._scroll - 1)
@@ -196,6 +242,8 @@ class DetailView:
         max_y, max_x = stdscr.getmaxyx()
         stdscr.erase()
 
+        safe_cols = max_x - 1
+
         title = self._entry.title or "(untitled)"
         when = self._entry.modified.astimezone().strftime("%Y-%m-%d %H:%M:%S")
         tags = ", ".join(self._entry.tags) if self._entry.tags else "—"
@@ -204,36 +252,34 @@ class DetailView:
             f"Title: {title}",
             f"Date : {when}",
             f"Tags : {tags}",
-            "-" * max_x,
+            "-" * safe_cols,
         ]
 
-        # Draw header
         row = 0
         for h in header_lines:
-            if row >= max_y - 1:
+            if row >= max_y:
                 break
-            stdscr.addnstr(row, 0, h, max_x)
+            _addstr_safe(stdscr, row, 0, _truncate_to_cols(h, safe_cols))
             row += 1
 
-        # Content area (full remaining height, no status line)
         content_lines = self._entry.content.splitlines() or [""]
         visible_height = max_y - row
         start = min(self._scroll, max(0, len(content_lines) - visible_height))
         for i, line in enumerate(content_lines[start : start + visible_height]):
             if row + i >= max_y:
                 break
-            stdscr.addnstr(row + i, 0, line, max_x)
+            _addstr_safe(stdscr, row + i, 0, _truncate_to_cols(line, safe_cols))
 
 
 def _main_curses(stdscr: "curses._CursesWindow", store: Store) -> None:
-    curses.curs_set(0)  # hide cursor
+    curses.curs_set(0)
     stdscr.nodelay(False)
     stdscr.keypad(True)
     # ESC delay 250ms: responsive enough, safe for remote/slow terminals
     curses.set_escdelay(250)
 
     list_view = ListView(store)
-    current: object = list_view  # either ListView or DetailView
+    current: object = list_view
 
     while True:
         if isinstance(current, ListView):
@@ -242,7 +288,7 @@ def _main_curses(stdscr: "curses._CursesWindow", store: Store) -> None:
             current.draw(stdscr)
         stdscr.refresh()
 
-        ch = stdscr.getch()
+        ch = stdscr.get_wch()
         if isinstance(current, ListView):
             action = current.handle_key(ch)
             if action == "quit":
@@ -261,9 +307,6 @@ def _main_curses(stdscr: "curses._CursesWindow", store: Store) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # CLI behavior:
-    # - No args: print product info + usage, exit 0.
-    # - One or more args: treat argv[0] as path to .page file; ignore the rest.
     if argv is None:
         argv = sys.argv[1:]
     if not argv:
@@ -283,6 +326,12 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"{e}\n")
         return 1
 
+    # UTF-8 locale required for get_wch() to return complete Unicode characters
+    try:
+        locale.setlocale(locale.LC_ALL, "")
+    except locale.Error:
+        pass
+
     try:
         curses.wrapper(_main_curses, store)
     except KeyboardInterrupt:
@@ -292,4 +341,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

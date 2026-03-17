@@ -126,13 +126,18 @@ class ListView:
         """
         # Printable character (including Chinese) from get_wch()
         if isinstance(ch, str):
-            if ch == "\x1b":          # ESC returned as string by some terminals
+            if ch == "\x1b":                  # ESC returned as string by some terminals
                 return "quit"
-            if ch in ("\n", "\r"):    # Enter returned as string by some terminals
+            if ch in ("\n", "\r"):            # Enter returned as string by some terminals
                 if self.displayed:
                     return "open"
                 return None
-            if ch >= " ":             # skip other control characters
+            if ch in ("\x7f", "\x08"):        # Backspace returned as string by some terminals
+                if self.search_text:
+                    self.search_text = self.search_text[:-1]
+                    self._refilter()
+                return None
+            if ch >= " ":                     # skip other control characters
                 self.search_text += ch
                 self._refilter()
             return None

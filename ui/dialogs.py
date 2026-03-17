@@ -13,6 +13,8 @@ import sys
 
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -20,7 +22,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QVBoxLayout,
     QMessageBox,
-    QApplication,
 )
 from PySide6.QtCore import Qt
 
@@ -56,6 +57,9 @@ class PassphraseDialog(QDialog):
         self._passphrase_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self._passphrase_edit.setPlaceholderText("Enter passphrase")
         form.addRow("Passphrase:", self._passphrase_edit)
+        self._show_checkbox = QCheckBox("Show passphrase")
+        self._show_checkbox.toggled.connect(self._on_toggle_show)
+        form.addRow("", self._show_checkbox)
         layout.addLayout(form)
 
         self._open_buttons = QDialogButtonBox(
@@ -74,6 +78,11 @@ class PassphraseDialog(QDialog):
             self.setWindowIcon(QIcon(_pp))
         else:
             apply_window_icon(self)
+
+    def _on_toggle_show(self, checked: bool) -> None:
+        self._passphrase_edit.setEchoMode(
+            QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
+        )
 
     def _update_open_ok_enabled(self) -> None:
         self._open_ok.setEnabled(bool(self._passphrase_edit.text().strip()))
@@ -112,6 +121,10 @@ class NewPassphraseDialog(QDialog):
         self._confirm_edit.setPlaceholderText("Re-enter passphrase")
         form.addRow("Confirm:", self._confirm_edit)
 
+        self._show_checkbox = QCheckBox("Show passphrase")
+        self._show_checkbox.toggled.connect(self._on_toggle_show)
+        form.addRow("", self._show_checkbox)
+
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
@@ -148,6 +161,11 @@ class NewPassphraseDialog(QDialog):
             self._confirm_edit.setFocus()
             return
         self.accept()
+
+    def _on_toggle_show(self, checked: bool) -> None:
+        mode = QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
+        self._passphrase_edit.setEchoMode(mode)
+        self._confirm_edit.setEchoMode(mode)
 
 
     def passphrase(self) -> str:
